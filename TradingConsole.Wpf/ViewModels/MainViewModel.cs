@@ -50,6 +50,10 @@ namespace TradingConsole.Wpf.ViewModels
         private readonly SemaphoreSlim _optionChainLoadSemaphore = new SemaphoreSlim(1, 1);
         private readonly Dictionary<string, OptionData> _optionChainCache = new();
         private readonly SemaphoreSlim _ivCacheSemaphore = new SemaphoreSlim(1, 1);
+
+        // --- PERFORMANCE OPTIMIZATION: Dictionaries for fast lookups ---
+        private Dictionary<string, DashboardInstrument> _dashboardInstrumentMap = new();
+        private Dictionary<string, Position> _openPositionsMap = new();
         #endregion
 
         #region Public Properties
@@ -163,6 +167,11 @@ namespace TradingConsole.Wpf.ViewModels
             Portfolio = new PortfolioViewModel();
             AnalysisTab = new AnalysisTabViewModel();
 
+            // --- PERFORMANCE OPTIMIZATION: Subscribe to collection changes to update maps ---
+            Dashboard.MonitoredInstruments.CollectionChanged += (s, e) => RebuildDashboardMap();
+            Portfolio.OpenPositions.CollectionChanged += (s, e) => RebuildPositionsMap();
+
+
             _webSocketClient.OnConnected += OnWebSocketConnected;
             _webSocketClient.OnLtpUpdate += OnLtpUpdateReceived;
             _webSocketClient.OnPreviousCloseUpdate += OnPreviousCloseUpdateReceived;
@@ -203,12 +212,10 @@ namespace TradingConsole.Wpf.ViewModels
         {
             Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                var instrumentToUpdate = Dashboard.MonitoredInstruments.FirstOrDefault(i => i.SecurityId == result.SecurityId);
-                if (instrumentToUpdate != null)
+                if (_dashboardInstrumentMap.TryGetValue(result.SecurityId, out var instrumentToUpdate))
                 {
                     instrumentToUpdate.TradingSignal = result.EmaSignal1Min;
                 }
-
                 AnalysisTab.UpdateAnalysisResult(result);
             });
         }
@@ -752,13 +759,9 @@ namespace TradingConsole.Wpf.ViewModels
                 }
                 Dashboard.UpdateLtp(packet);
 
-                if (!string.IsNullOrEmpty(packet.SecurityId))
+                if (!string.IsNullOrEmpty(packet.SecurityId) && _openPositionsMap.TryGetValue(packet.SecurityId, out var openPositionToUpdate))
                 {
-                    var openPositionToUpdate = Portfolio.OpenPositions.FirstOrDefault(p => p.SecurityId == packet.SecurityId);
-                    if (openPositionToUpdate != null)
-                    {
-                        openPositionToUpdate.LastTradedPrice = packet.LastPrice;
-                    }
+                    openPositionToUpdate.LastTradedPrice = packet.LastPrice;
                 }
             });
         }
@@ -809,9 +812,8 @@ namespace TradingConsole.Wpf.ViewModels
             {
                 if (string.IsNullOrEmpty(packet.SecurityId)) return;
 
-                var instrumentToUpdate = Dashboard.MonitoredInstruments.FirstOrDefault(i => i.SecurityId == packet.SecurityId);
-
-                if (instrumentToUpdate != null)
+                // --- PERFORMANCE OPTIMIZATION: Use dictionary for faster lookups ---
+                if (_dashboardInstrumentMap.TryGetValue(packet.SecurityId, out var instrumentToUpdate))
                 {
                     instrumentToUpdate.LTP = packet.LastPrice;
                     instrumentToUpdate.Open = packet.Open;
@@ -842,17 +844,13 @@ namespace TradingConsole.Wpf.ViewModels
                     optionDetails.Volume = packet.Volume;
                 }
 
-                var indexInstrument = Dashboard.MonitoredInstruments
-                                        .FirstOrDefault(i => i.SecurityId == packet.SecurityId && i.SegmentId == 0);
-
-                if (indexInstrument != null && !_dashboardOptionsLoadedFor.Contains(packet.SecurityId))
+                if (instrumentToUpdate != null && instrumentToUpdate.SegmentId == 0 && !_dashboardOptionsLoadedFor.Contains(packet.SecurityId))
                 {
                     _dashboardOptionsLoadedFor.Add(packet.SecurityId);
-                    Task.Run(() => LoadDashboardOptionsForIndexAsync(indexInstrument, packet.LastPrice));
+                    Task.Run(() => LoadDashboardOptionsForIndexAsync(instrumentToUpdate, packet.LastPrice));
                 }
 
-                var openPositionToUpdate = Portfolio.OpenPositions.FirstOrDefault(p => p.SecurityId == packet.SecurityId);
-                if (openPositionToUpdate != null)
+                if (_openPositionsMap.TryGetValue(packet.SecurityId, out var openPositionToUpdate))
                 {
                     openPositionToUpdate.LastTradedPrice = packet.LastPrice;
                 }
@@ -883,7 +881,6 @@ namespace TradingConsole.Wpf.ViewModels
                 var positionsFromApi = await _apiClient.GetPositionsAsync();
                 var fundLimitFromApi = await _apiClient.GetFundLimitAsync();
 
-                // --- FIX: Ensure all open positions are subscribed to for live quotes ---
                 var securityIdsToSubscribe = new Dictionary<string, int>();
 
                 if (positionsFromApi != null)
@@ -916,7 +913,6 @@ namespace TradingConsole.Wpf.ViewModels
 
                 if (securityIdsToSubscribe.Any())
                 {
-                    // Always subscribe to the full quote feed for accurate P&L
                     await _webSocketClient.SubscribeToInstrumentsAsync(securityIdsToSubscribe, 17);
                 }
 
@@ -1441,6 +1437,18 @@ namespace TradingConsole.Wpf.ViewModels
                 OnPropertyChanged(nameof(StatusMessage));
             }).Task;
         }
+
+        // --- PERFORMANCE OPTIMIZATION: Methods to rebuild lookup dictionaries ---
+        private void RebuildDashboardMap()
+        {
+            _dashboardInstrumentMap = Dashboard.MonitoredInstruments.ToDictionary(i => i.SecurityId);
+        }
+
+        private void RebuildPositionsMap()
+        {
+            _openPositionsMap = Portfolio.OpenPositions.ToDictionary(p => p.SecurityId);
+        }
+
         #endregion
 
         #region Boilerplate
