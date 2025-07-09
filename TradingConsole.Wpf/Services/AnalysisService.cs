@@ -113,7 +113,7 @@ namespace TradingConsole.Wpf.Services
                 if (InstrumentGroup == "Options")
                 {
                     if (UnderlyingGroup.ToUpper().Contains("NIFTY") && !UnderlyingGroup.ToUpper().Contains("BANK")) return "Nifty Options";
-                    if (UnderlyingGroup.ToUpper().Contains("BANKNIFTY")) return "Banknifty Options";
+                    if (UnderlyingGroup.ToUpper().Contains("BANK")) return "Banknifty Options";
                     if (UnderlyingGroup.ToUpper().Contains("SENSEX")) return "Sensex Options";
                     return "Other Stock Options";
                 }
