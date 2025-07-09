@@ -480,8 +480,11 @@ namespace TradingConsole.Wpf.ViewModels
             return Settings.NiftyFreezeQuantity;
         }
 
-
-        private string ConstructInstrumentName(decimal strike, bool isCall) { return $"{SelectedIndex?.Symbol} {SelectedExpiry?.ToUpper()} {strike} {(isCall ? "CALL" : "PUT")}"; }
+        private string ConstructInstrumentName(decimal strike, bool isCall)
+        {
+            string formattedStrike = strike.ToString("G29", CultureInfo.InvariantCulture);
+            return $"{SelectedIndex?.Symbol} {SelectedExpiry?.ToUpper()} {formattedStrike} {(isCall ? "CALL" : "PUT")}";
+        }
 
         #endregion
 
@@ -636,7 +639,6 @@ namespace TradingConsole.Wpf.ViewModels
             return (dashboardInstrument, prefixedSymbolToSave);
         }
 
-        // MODIFIED: This method now populates the new InstrumentType property
         private DashboardInstrument CreateDashboardInstrument(ScripInfo info)
         {
             string typePrefix = GetTypePrefix(info.InstrumentType);
@@ -652,7 +654,7 @@ namespace TradingConsole.Wpf.ViewModels
                 FeedType = FeedTypeQuote,
                 IsFuture = (typePrefix == "FUT"),
                 UnderlyingSymbol = underlying,
-                InstrumentType = info.InstrumentType // Populate the new property here
+                InstrumentType = info.InstrumentType
             };
 
             if (typePrefix == "IDX")
@@ -881,23 +883,19 @@ namespace TradingConsole.Wpf.ViewModels
                 var positionsFromApi = await _apiClient.GetPositionsAsync();
                 var fundLimitFromApi = await _apiClient.GetFundLimitAsync();
 
+                // --- FIX: Ensure all open positions are subscribed to for live quotes ---
                 var securityIdsToSubscribe = new Dictionary<string, int>();
 
                 if (positionsFromApi != null)
                 {
-                    foreach (var posData in positionsFromApi)
+                    foreach (var posData in positionsFromApi.Where(p => p.NetQuantity != 0))
                     {
-                        if (posData.NetQuantity != 0 && !string.IsNullOrEmpty(posData.SecurityId) && !string.IsNullOrEmpty(posData.Exchange))
+                        if (!string.IsNullOrEmpty(posData.SecurityId) && !string.IsNullOrEmpty(posData.Exchange))
                         {
-                            bool isAlreadySubscribed = Dashboard.MonitoredInstruments.Any(i => i.SecurityId == posData.SecurityId);
-
-                            if (!isAlreadySubscribed)
+                            int segmentId = _scripMasterService.GetSegmentIdFromName(posData.Exchange);
+                            if (segmentId != -1)
                             {
-                                int segmentId = _scripMasterService.GetSegmentIdFromName(posData.Exchange);
-                                if (segmentId != -1)
-                                {
-                                    securityIdsToSubscribe[posData.SecurityId] = segmentId;
-                                }
+                                securityIdsToSubscribe[posData.SecurityId] = segmentId;
                             }
                         }
                     }
@@ -918,6 +916,7 @@ namespace TradingConsole.Wpf.ViewModels
 
                 if (securityIdsToSubscribe.Any())
                 {
+                    // Always subscribe to the full quote feed for accurate P&L
                     await _webSocketClient.SubscribeToInstrumentsAsync(securityIdsToSubscribe, 17);
                 }
 
@@ -1107,7 +1106,6 @@ namespace TradingConsole.Wpf.ViewModels
             }
         }
 
-        // MODIFIED: This method now populates the new InstrumentType property
         private async Task LoadDashboardOptionsForIndexAsync(DashboardInstrument indexInstrument, decimal livePrice)
         {
             try
@@ -1149,7 +1147,7 @@ namespace TradingConsole.Wpf.ViewModels
                             FeedType = FeedTypeQuote,
                             SegmentId = optionSegmentId,
                             UnderlyingSymbol = indexInstrument.Symbol,
-                            InstrumentType = ceInfo.InstrumentType // Populate the new property here
+                            InstrumentType = ceInfo.InstrumentType
                         };
                         newOptionInstruments.Add(inst);
                         newSubscriptions[inst.SecurityId] = inst.SegmentId;
@@ -1166,7 +1164,7 @@ namespace TradingConsole.Wpf.ViewModels
                             FeedType = FeedTypeQuote,
                             SegmentId = optionSegmentId,
                             UnderlyingSymbol = indexInstrument.Symbol,
-                            InstrumentType = peInfo.InstrumentType // Populate the new property here
+                            InstrumentType = peInfo.InstrumentType
                         };
                         newOptionInstruments.Add(inst);
                         newSubscriptions[inst.SecurityId] = inst.SegmentId;
