@@ -97,7 +97,6 @@ namespace TradingConsole.Wpf.ViewModels
             ShortEmaLength = _settings.ShortEmaLength;
             LongEmaLength = _settings.LongEmaLength;
 
-            // --- NEW: Load custom index levels ---
             var niftyLevels = _settings.CustomIndexLevels.GetValueOrDefault("NIFTY", new IndexLevels());
             NiftyNoTradeUpper = niftyLevels.NoTradeUpperBand;
             NiftyNoTradeLower = niftyLevels.NoTradeLowerBand;
@@ -130,7 +129,6 @@ namespace TradingConsole.Wpf.ViewModels
             _settings.ShortEmaLength = ShortEmaLength;
             _settings.LongEmaLength = LongEmaLength;
 
-            // --- NEW: Save custom index levels ---
             _settings.CustomIndexLevels["NIFTY"] = new IndexLevels
             {
                 NoTradeUpperBand = NiftyNoTradeUpper,
@@ -161,18 +159,33 @@ namespace TradingConsole.Wpf.ViewModels
             SettingsSaved?.Invoke(this, EventArgs.Empty);
         }
 
-        // --- NEW: Public method to get levels for a specific index ---
+        // --- FIX: Corrected the logic to properly identify "Nifty Bank" ---
         public IndexLevels? GetLevelsForIndex(string indexSymbol)
         {
             if (string.IsNullOrEmpty(indexSymbol)) return null;
 
             string key = indexSymbol.ToUpper();
-            if (key.Contains("NIFTY") && !key.Contains("BANK")) key = "NIFTY";
-            else if (key.Contains("BANKNIFTY")) key = "BANKNIFTY";
-            else if (key.Contains("SENSEX")) key = "SENSEX";
-            else return null;
+            string settingsKey;
 
-            return _settings.CustomIndexLevels.GetValueOrDefault(key);
+            // Check for the more specific "BANKNIFTY" first to avoid ambiguity.
+            if (key.Contains("BANK") && key.Contains("NIFTY"))
+            {
+                settingsKey = "BANKNIFTY";
+            }
+            else if (key.Contains("NIFTY"))
+            {
+                settingsKey = "NIFTY";
+            }
+            else if (key.Contains("SENSEX"))
+            {
+                settingsKey = "SENSEX";
+            }
+            else
+            {
+                return null; // No matching index found
+            }
+
+            return _settings.CustomIndexLevels.GetValueOrDefault(settingsKey);
         }
 
 
