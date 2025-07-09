@@ -24,13 +24,19 @@ namespace TradingConsole.Wpf.Services
         public long Volume { get; set; }
         public long OpenInterest { get; set; }
 
+        // --- NEW: Properties for per-candle VWAP calculation ---
+        public decimal Vwap { get; set; }
+        internal decimal CumulativePriceVolume { get; set; } = 0;
+        internal long CumulativeVolume { get; set; } = 0;
+
+
         public override string ToString()
         {
             return $"T: {Timestamp:HH:mm:ss}, O: {Open}, H: {High}, L: {Low}, C: {Close}, V: {Volume}";
         }
     }
 
-    public class TimeframeAnalysisState
+    public class EmaState
     {
         public decimal CurrentShortEma { get; set; }
         public decimal CurrentLongEma { get; set; }
@@ -61,6 +67,10 @@ namespace TradingConsole.Wpf.Services
         private string _emaSignal1Min = "N/A";
         private string _emaSignal5Min = "N/A";
         private string _emaSignal15Min = "N/A";
+        // --- NEW: Properties for the VWAP EMA signals ---
+        private string _vwapEmaSignal1Min = "N/A";
+        private string _vwapEmaSignal5Min = "N/A";
+        private string _vwapEmaSignal15Min = "N/A";
         private string _priceVsVwapSignal = "Neutral";
         private string _priceVsCloseSignal = "Neutral";
         private string _dayRangeSignal = "Neutral";
@@ -87,6 +97,10 @@ namespace TradingConsole.Wpf.Services
         public string EmaSignal1Min { get => _emaSignal1Min; set { if (_emaSignal1Min != value) { _emaSignal1Min = value; OnPropertyChanged(); } } }
         public string EmaSignal5Min { get => _emaSignal5Min; set { if (_emaSignal5Min != value) { _emaSignal5Min = value; OnPropertyChanged(); } } }
         public string EmaSignal15Min { get => _emaSignal15Min; set { if (_emaSignal15Min != value) { _emaSignal15Min = value; OnPropertyChanged(); } } }
+        // --- NEW: Getters and setters for VWAP EMA signals ---
+        public string VwapEmaSignal1Min { get => _vwapEmaSignal1Min; set { if (_vwapEmaSignal1Min != value) { _vwapEmaSignal1Min = value; OnPropertyChanged(); } } }
+        public string VwapEmaSignal5Min { get => _vwapEmaSignal5Min; set { if (_vwapEmaSignal5Min != value) { _vwapEmaSignal5Min = value; OnPropertyChanged(); } } }
+        public string VwapEmaSignal15Min { get => _vwapEmaSignal15Min; set { if (_vwapEmaSignal15Min != value) { _vwapEmaSignal15Min = value; OnPropertyChanged(); } } }
         public string PriceVsVwapSignal { get => _priceVsVwapSignal; set { if (_priceVsVwapSignal != value) { _priceVsVwapSignal = value; OnPropertyChanged(); } } }
         public string PriceVsCloseSignal { get => _priceVsCloseSignal; set { if (_priceVsCloseSignal != value) { _priceVsCloseSignal = value; OnPropertyChanged(); } } }
         public string DayRangeSignal { get => _dayRangeSignal; set { if (_dayRangeSignal != value) { _dayRangeSignal = value; OnPropertyChanged(); } } }
@@ -123,8 +137,6 @@ namespace TradingConsole.Wpf.Services
         private readonly ScripMasterService _scripMasterService;
         private readonly Dictionary<string, CustomLevelState> _customLevelStates = new();
         private readonly HashSet<string> _backfilledInstruments = new HashSet<string>();
-
-        // --- CORRECTED: Maintain a persistent dictionary of results ---
         private readonly Dictionary<string, AnalysisResult> _analysisResults = new();
 
         public int ShortEmaLength { get; set; } = 9;
@@ -143,7 +155,9 @@ namespace TradingConsole.Wpf.Services
         };
         private readonly Dictionary<string, (decimal cumulativePriceVolume, long cumulativeVolume, List<decimal> ivHistory)> _tickAnalysisState = new();
         private readonly Dictionary<string, Dictionary<TimeSpan, List<Candle>>> _multiTimeframeCandles = new();
-        private readonly Dictionary<string, Dictionary<TimeSpan, TimeframeAnalysisState>> _multiTimeframeAnalysisState = new();
+        // --- MODIFIED: Renamed for clarity and added a new state dictionary for VWAP EMA ---
+        private readonly Dictionary<string, Dictionary<TimeSpan, EmaState>> _multiTimeframePriceEmaState = new();
+        private readonly Dictionary<string, Dictionary<TimeSpan, EmaState>> _multiTimeframeVwapEmaState = new();
         public event Action<AnalysisResult>? OnAnalysisUpdated;
         #endregion
 
@@ -156,16 +170,22 @@ namespace TradingConsole.Wpf.Services
 
         public async void OnInstrumentDataReceived(DashboardInstrument instrument)
         {
+            if (string.IsNullOrEmpty(instrument.SecurityId)) return;
+
             bool isNewInstrument = !_backfilledInstruments.Contains(instrument.SecurityId);
             if (isNewInstrument)
             {
                 _tickAnalysisState[instrument.SecurityId] = (0, 0, new List<decimal>());
                 _multiTimeframeCandles[instrument.SecurityId] = new Dictionary<TimeSpan, List<Candle>>();
+                _multiTimeframePriceEmaState[instrument.SecurityId] = new Dictionary<TimeSpan, EmaState>();
+                _multiTimeframeVwapEmaState[instrument.SecurityId] = new Dictionary<TimeSpan, EmaState>();
+
                 foreach (var tf in _timeframes)
                 {
                     _multiTimeframeCandles[instrument.SecurityId][tf] = new List<Candle>();
+                    _multiTimeframePriceEmaState[instrument.SecurityId][tf] = new EmaState();
+                    _multiTimeframeVwapEmaState[instrument.SecurityId][tf] = new EmaState();
                 }
-                _multiTimeframeAnalysisState[instrument.SecurityId] = new Dictionary<TimeSpan, TimeframeAnalysisState>();
 
                 if (instrument.SegmentId == 0)
                 {
@@ -206,7 +226,9 @@ namespace TradingConsole.Wpf.Services
                         Low = historicalDataPoints.Low[i],
                         Close = historicalDataPoints.Close[i],
                         Volume = historicalDataPoints.Volume[i],
-                        OpenInterest = historicalDataPoints.OpenInterest.Count > i ? historicalDataPoints.OpenInterest[i] : 0
+                        OpenInterest = historicalDataPoints.OpenInterest.Count > i ? historicalDataPoints.OpenInterest[i] : 0,
+                        // --- NEW: Use Typical Price as a proxy for historical VWAP ---
+                        Vwap = (historicalDataPoints.High[i] + historicalDataPoints.Low[i] + historicalDataPoints.Close[i]) / 3
                     };
 
                     foreach (var timeframe in _timeframes)
@@ -230,16 +252,7 @@ namespace TradingConsole.Wpf.Services
 
             if (existingCandle == null)
             {
-                candles.Add(new Candle
-                {
-                    Timestamp = candleTimestamp,
-                    Open = historicalCandle.Open,
-                    High = historicalCandle.High,
-                    Low = historicalCandle.Low,
-                    Close = historicalCandle.Close,
-                    Volume = historicalCandle.Volume,
-                    OpenInterest = historicalCandle.OpenInterest
-                });
+                candles.Add(historicalCandle); // Add the candle directly as it's already complete
             }
             else
             {
@@ -248,6 +261,8 @@ namespace TradingConsole.Wpf.Services
                 existingCandle.Close = historicalCandle.Close;
                 existingCandle.Volume += historicalCandle.Volume;
                 existingCandle.OpenInterest = historicalCandle.OpenInterest;
+                // Recalculate VWAP proxy for the aggregated historical candle
+                existingCandle.Vwap = (existingCandle.High + existingCandle.Low + existingCandle.Close) / 3;
             }
         }
 
@@ -274,7 +289,11 @@ namespace TradingConsole.Wpf.Services
                     Low = instrument.LTP,
                     Close = instrument.LTP,
                     Volume = instrument.LastTradedQuantity,
-                    OpenInterest = instrument.OpenInterest
+                    OpenInterest = instrument.OpenInterest,
+                    // --- NEW: Initialize VWAP calculation for the new candle ---
+                    CumulativePriceVolume = instrument.AvgTradePrice * instrument.LastTradedQuantity,
+                    CumulativeVolume = instrument.LastTradedQuantity,
+                    Vwap = instrument.AvgTradePrice
                 });
 
                 if (candles.Count > MaxCandlesToStore)
@@ -289,15 +308,27 @@ namespace TradingConsole.Wpf.Services
                 currentCandle.Close = instrument.LTP;
                 currentCandle.Volume += instrument.LastTradedQuantity;
                 currentCandle.OpenInterest = instrument.OpenInterest;
+                // --- NEW: Update VWAP calculation for the current candle ---
+                currentCandle.CumulativePriceVolume += instrument.AvgTradePrice * instrument.LastTradedQuantity;
+                currentCandle.CumulativeVolume += instrument.LastTradedQuantity;
+                currentCandle.Vwap = (currentCandle.CumulativeVolume > 0)
+                    ? currentCandle.CumulativePriceVolume / currentCandle.CumulativeVolume
+                    : currentCandle.Close; // Fallback to Close if volume is zero
             }
         }
 
         private void RunComplexAnalysis(DashboardInstrument instrument)
         {
+            if (!_analysisResults.TryGetValue(instrument.SecurityId, out var result))
+            {
+                result = new AnalysisResult { SecurityId = instrument.SecurityId };
+                _analysisResults[instrument.SecurityId] = result;
+            }
+
             var tickState = _tickAnalysisState[instrument.SecurityId];
             tickState.cumulativePriceVolume += instrument.AvgTradePrice * instrument.LastTradedQuantity;
             tickState.cumulativeVolume += instrument.LastTradedQuantity;
-            decimal vwap = (tickState.cumulativeVolume > 0) ? tickState.cumulativePriceVolume / tickState.cumulativeVolume : 0;
+            decimal dayVwap = (tickState.cumulativeVolume > 0) ? tickState.cumulativePriceVolume / tickState.cumulativeVolume : 0;
 
             if (instrument.ImpliedVolatility > 0) tickState.ivHistory.Add(instrument.ImpliedVolatility);
             if (tickState.ivHistory.Count > _ivHistoryLength) tickState.ivHistory.RemoveAt(0);
@@ -305,12 +336,15 @@ namespace TradingConsole.Wpf.Services
 
             _tickAnalysisState[instrument.SecurityId] = tickState;
 
-            var mtaSignals = new Dictionary<TimeSpan, string>();
+            // --- MODIFIED: Calculate both Price EMA and VWAP EMA ---
+            var priceEmaSignals = new Dictionary<TimeSpan, string>();
+            var vwapEmaSignals = new Dictionary<TimeSpan, string>();
             foreach (var timeframe in _timeframes)
             {
                 var candles = _multiTimeframeCandles[instrument.SecurityId].GetValueOrDefault(timeframe);
                 if (candles == null || !candles.Any()) continue;
-                mtaSignals[timeframe] = CalculateEmaSignalForTimeframe(instrument.SecurityId, timeframe, candles);
+                priceEmaSignals[timeframe] = CalculateEmaSignal(instrument.SecurityId, candles, _multiTimeframePriceEmaState, useVwap: false);
+                vwapEmaSignals[timeframe] = CalculateEmaSignal(instrument.SecurityId, candles, _multiTimeframeVwapEmaState, useVwap: true);
             }
 
             var oneMinCandles = _multiTimeframeCandles[instrument.SecurityId].GetValueOrDefault(TimeSpan.FromMinutes(1));
@@ -327,7 +361,7 @@ namespace TradingConsole.Wpf.Services
                 oiSignal = CalculateOiSignal(oneMinCandles);
             }
 
-            var paSignals = CalculatePriceActionSignals(instrument, vwap);
+            var paSignals = CalculatePriceActionSignals(instrument, dayVwap);
             string customLevelSignal = CalculateCustomLevelSignal(instrument);
 
             string candleSignal1Min = "N/A";
@@ -337,15 +371,8 @@ namespace TradingConsole.Wpf.Services
             var fiveMinCandles = _multiTimeframeCandles[instrument.SecurityId].GetValueOrDefault(TimeSpan.FromMinutes(5));
             if (fiveMinCandles != null) candleSignal5Min = RecognizeCandlestickPattern(fiveMinCandles);
 
-            // --- CORRECTED LOGIC: Get or create a persistent result object and update its properties ---
-            if (!_analysisResults.TryGetValue(instrument.SecurityId, out var result))
-            {
-                result = new AnalysisResult { SecurityId = instrument.SecurityId };
-                _analysisResults[instrument.SecurityId] = result;
-            }
-
             result.Symbol = instrument.DisplayName;
-            result.Vwap = vwap;
+            result.Vwap = dayVwap;
             result.CurrentIv = instrument.ImpliedVolatility;
             result.AvgIv = avgIv;
             result.IvSignal = ivSignal;
@@ -356,9 +383,13 @@ namespace TradingConsole.Wpf.Services
             result.CustomLevelSignal = customLevelSignal;
             result.CandleSignal1Min = candleSignal1Min;
             result.CandleSignal5Min = candleSignal5Min;
-            result.EmaSignal1Min = mtaSignals.GetValueOrDefault(TimeSpan.FromMinutes(1), "N/A");
-            result.EmaSignal5Min = mtaSignals.GetValueOrDefault(TimeSpan.FromMinutes(5), "N/A");
-            result.EmaSignal15Min = mtaSignals.GetValueOrDefault(TimeSpan.FromMinutes(15), "N/A");
+            result.EmaSignal1Min = priceEmaSignals.GetValueOrDefault(TimeSpan.FromMinutes(1), "N/A");
+            result.EmaSignal5Min = priceEmaSignals.GetValueOrDefault(TimeSpan.FromMinutes(5), "N/A");
+            result.EmaSignal15Min = priceEmaSignals.GetValueOrDefault(TimeSpan.FromMinutes(15), "N/A");
+            // --- NEW: Populate the VWAP EMA signals ---
+            result.VwapEmaSignal1Min = vwapEmaSignals.GetValueOrDefault(TimeSpan.FromMinutes(1), "N/A");
+            result.VwapEmaSignal5Min = vwapEmaSignals.GetValueOrDefault(TimeSpan.FromMinutes(5), "N/A");
+            result.VwapEmaSignal15Min = vwapEmaSignals.GetValueOrDefault(TimeSpan.FromMinutes(15), "N/A");
             result.InstrumentGroup = GetInstrumentGroup(instrument);
             result.UnderlyingGroup = instrument.UnderlyingSymbol;
             result.PriceVsVwapSignal = paSignals.priceVsVwap;
@@ -369,26 +400,40 @@ namespace TradingConsole.Wpf.Services
             OnAnalysisUpdated?.Invoke(result);
         }
 
-        private string CalculateEmaSignalForTimeframe(string securityId, TimeSpan timeframe, List<Candle> candles)
+        /// <summary>
+        /// A generic method to calculate EMA signals based on either Price or VWAP.
+        /// </summary>
+        private string CalculateEmaSignal(string securityId, List<Candle> candles, Dictionary<string, Dictionary<TimeSpan, EmaState>> stateDictionary, bool useVwap)
         {
-            if (!_multiTimeframeAnalysisState.ContainsKey(securityId) || !_multiTimeframeAnalysisState[securityId].ContainsKey(timeframe))
-            {
-                _multiTimeframeAnalysisState[securityId][timeframe] = new TimeframeAnalysisState();
-            }
+            if (candles.Count < LongEmaLength) return "Building History...";
 
-            var state = _multiTimeframeAnalysisState[securityId][timeframe];
+            var timeframe = candles[1].Timestamp - candles[0].Timestamp;
+            var state = stateDictionary[securityId][timeframe];
             var lastCandle = candles.Last();
 
-            decimal shortMultiplier = 2.0m / (ShortEmaLength + 1);
-            state.CurrentShortEma = (state.CurrentShortEma == 0) ? lastCandle.Close : ((lastCandle.Close - state.CurrentShortEma) * shortMultiplier) + state.CurrentShortEma;
+            // Determine the source value for the EMA calculation
+            Func<Candle, decimal> sourceSelector = useVwap ? (c => c.Vwap) : (c => c.Close);
+            decimal lastValue = sourceSelector(lastCandle);
 
-            decimal longMultiplier = 2.0m / (LongEmaLength + 1);
-            state.CurrentLongEma = (state.CurrentLongEma == 0) ? lastCandle.Close : ((lastCandle.Close - state.CurrentLongEma) * longMultiplier) + state.CurrentLongEma;
+            if (state.CurrentShortEma == 0 || state.CurrentLongEma == 0)
+            {
+                state.CurrentShortEma = candles.Skip(candles.Count - ShortEmaLength).Average(sourceSelector);
+                state.CurrentLongEma = candles.Skip(candles.Count - LongEmaLength).Average(sourceSelector);
+            }
+            else
+            {
+                decimal shortMultiplier = 2.0m / (ShortEmaLength + 1);
+                state.CurrentShortEma = ((lastValue - state.CurrentShortEma) * shortMultiplier) + state.CurrentShortEma;
+
+                decimal longMultiplier = 2.0m / (LongEmaLength + 1);
+                state.CurrentLongEma = ((lastValue - state.CurrentLongEma) * longMultiplier) + state.CurrentLongEma;
+            }
 
             if (state.CurrentShortEma > state.CurrentLongEma) return "Bullish Cross";
             if (state.CurrentShortEma < state.CurrentLongEma) return "Bearish Cross";
             return "Neutral";
         }
+
 
         #region Helper Calculation Methods
         private (decimal avgIv, string ivSignal) CalculateIvSignal(decimal currentIv, List<decimal> ivHistory)
