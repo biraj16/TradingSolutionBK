@@ -27,8 +27,14 @@
 
         <TextBlock Grid.Row="0" Text="Real-time Analysis Results" Margin="10" FontSize="18" FontWeight="Bold"/>
 
+        <!-- 
+            CHANGE 1: Added VirtualizingPanel.VirtualizationMode="Recycling" for smoother vertical scrolling.
+            CHANGE 2: Added ScrollViewer.HorizontalScrollBarVisibility="Auto" to enable the horizontal scrollbar.
+        -->
         <DataGrid Grid.Row="1"
                   ItemsSource="{Binding Source={StaticResource AnalysisResultsGrouped}}"
+                  VirtualizingPanel.VirtualizationMode="Recycling"
+                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
                   AutoGenerateColumns="False"
                   IsReadOnly="True"
                   HeadersVisibility="Column"
@@ -71,10 +77,10 @@
                 </GroupStyle>
             </DataGrid.GroupStyle>
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Symbol" Binding="{Binding Symbol}" Width="1.5*"/>
+                <!-- CHANGE 3: Changed all column widths from star-based to fixed values to allow horizontal scrolling. -->
+                <DataGridTextColumn Header="Symbol" Binding="{Binding Symbol}" Width="180"/>
 
-                <!-- NEW: Candlestick Pattern Columns -->
-                <DataGridTemplateColumn Header="1m Candle" Width="1.5*">
+                <DataGridTemplateColumn Header="1m Candle" Width="150">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding CandleSignal1Min}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -97,7 +103,7 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTemplateColumn Header="5m Candle" Width="1.5*">
+                <DataGridTemplateColumn Header="5m Candle" Width="150">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding CandleSignal5Min}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -121,8 +127,7 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <!-- Custom Level Signal Column (Added from V1) -->
-                <DataGridTemplateColumn Header="Custom Level" Width="1.2*">
+                <DataGridTemplateColumn Header="Custom Level" Width="130">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding CustomLevelSignal}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -146,11 +151,9 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <!-- Restored VWAP Column -->
-                <DataGridTextColumn Header="VWAP" Binding="{Binding Vwap, StringFormat=N2}" Width="*"/>
+                <DataGridTextColumn Header="VWAP" Binding="{Binding Vwap, StringFormat=N2}" Width="100"/>
 
-                <!-- Price Action Signal Columns -->
-                <DataGridTemplateColumn Header="vs VWAP" Width="*">
+                <DataGridTemplateColumn Header="vs VWAP" Width="100">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding PriceVsVwapSignal}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -171,7 +174,7 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <DataGridTemplateColumn Header="vs Close" Width="*">
+                <DataGridTemplateColumn Header="vs Close" Width="100">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding PriceVsCloseSignal}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -192,7 +195,7 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <DataGridTemplateColumn Header="Day Range" Width="*">
+                <DataGridTemplateColumn Header="Day Range" Width="100">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding DayRangeSignal}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -213,7 +216,7 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <DataGridTemplateColumn Header="Open Drive" Width="*">
+                <DataGridTemplateColumn Header="Open Drive" Width="100">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding OpenDriveSignal}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -234,8 +237,7 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <!-- OI Signal Column -->
-                <DataGridTemplateColumn Header="OI Signal" Width="1.2*">
+                <DataGridTemplateColumn Header="OI Signal" Width="130">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding OiSignal}" VerticalAlignment="Center" HorizontalAlignment="Center">
@@ -266,8 +268,7 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <!-- EMA Columns with Enhanced Styling -->
-                <DataGridTextColumn Header="1 Min EMA" Binding="{Binding EmaSignal1Min}" Width="*" IsReadOnly="True">
+                <DataGridTextColumn Header="1 Min EMA" Binding="{Binding EmaSignal1Min}" Width="110" IsReadOnly="True">
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock">
                             <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -283,7 +284,7 @@
                         </Style>
                     </DataGridTextColumn.ElementStyle>
                 </DataGridTextColumn>
-                <DataGridTextColumn Header="5 Min EMA" Binding="{Binding EmaSignal5Min}" Width="*" IsReadOnly="True">
+                <DataGridTextColumn Header="5 Min EMA" Binding="{Binding EmaSignal5Min}" Width="110" IsReadOnly="True">
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock">
                             <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -299,7 +300,7 @@
                         </Style>
                     </DataGridTextColumn.ElementStyle>
                 </DataGridTextColumn>
-                <DataGridTextColumn Header="15 Min EMA" Binding="{Binding EmaSignal15Min}" Width="*" IsReadOnly="True">
+                <DataGridTextColumn Header="15 Min EMA" Binding="{Binding EmaSignal15Min}" Width="110" IsReadOnly="True">
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock">
                             <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -316,17 +317,13 @@
                     </DataGridTextColumn.ElementStyle>
                 </DataGridTextColumn>
 
-                <!-- IV Columns -->
-                <DataGridTextColumn Header="Current IV" Binding="{Binding CurrentIv, StringFormat='{}{0:F2}%'}" Width="*"/>
-                <DataGridTextColumn Header="Avg IV" Binding="{Binding AvgIv, StringFormat='{}{0:F2}%'}" Width="*"/>
-                <DataGridTextColumn Header="IV Signal" Binding="{Binding IvSignal}" Width="1.2*"/>
+                <DataGridTextColumn Header="Current IV" Binding="{Binding CurrentIv, StringFormat='{}{0:F2}%'}" Width="100"/>
+                <DataGridTextColumn Header="Avg IV" Binding="{Binding AvgIv, StringFormat='{}{0:F2}%'}" Width="100"/>
+                <DataGridTextColumn Header="IV Signal" Binding="{Binding IvSignal}" Width="120"/>
+                <DataGridTextColumn Header="Current Vol" Binding="{Binding CurrentVolume, StringFormat=N0}" Width="100"/>
+                <DataGridTextColumn Header="Avg Vol" Binding="{Binding AvgVolume, StringFormat=N0}" Width="100"/>
 
-                <!-- Volume Columns -->
-                <DataGridTextColumn Header="Current Vol" Binding="{Binding CurrentVolume, StringFormat=N0}" Width="*"/>
-                <DataGridTextColumn Header="Avg Vol" Binding="{Binding AvgVolume, StringFormat=N0}" Width="*"/>
-
-                <!-- Volume Signal Column with Styling -->
-                <DataGridTemplateColumn Header="Vol Signal" Width="1.2*">
+                <DataGridTemplateColumn Header="Vol Signal" Width="120">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding VolumeSignal}" VerticalAlignment="Center" HorizontalAlignment="Center">

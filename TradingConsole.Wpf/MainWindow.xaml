@@ -169,7 +169,8 @@
                             <TextBlock Text="{Binding Path=OpenPnl, StringFormat='₹#,##0.00'}" VerticalAlignment="Center" FontWeight="Bold" FontSize="14" Style="{StaticResource PnlTextStyle}"/>
                             <TextBlock Text="Net P&amp;L:" VerticalAlignment="Center" FontWeight="SemiBold" Margin="25,0,5,0"/>
                             <TextBlock Text="{Binding Path=NetPnl, StringFormat='₹#,##0.00'}" VerticalAlignment="Center" FontWeight="Bold" FontSize="14" Style="{StaticResource PnlTextStyle}"/>
-                            <Button Content="Refresh" Command="{Binding DataContext.RefreshPortfolioCommand, RelativeSource={RelativeSource AncestorType=TabItem}}" HorizontalAlignment="Left" Margin="30,0,0,0"/>
+                            <!-- *** BINDING FIX HERE *** -->
+                            <Button Content="Refresh" Command="{Binding DataContext.RefreshPortfolioCommand, RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Left" Margin="30,0,0,0"/>
                         </StackPanel>
                     </Border>
 
@@ -188,9 +189,11 @@
                                     <RowDefinition Height="*"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
-                                <DataGrid ItemsSource="{Binding Portfolio.OpenPositions}" VerticalScrollBarVisibility="Auto">
+                                <DataGrid ItemsSource="{Binding Portfolio.OpenPositions}" 
+                                          VirtualizingPanel.VirtualizationMode="Recycling"
+                                          VerticalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
-                                        <DataGridTemplateColumn MinWidth="30">
+                                        <DataGridTemplateColumn Width="30">
                                             <DataGridTemplateColumn.Header>
                                                 <CheckBox IsChecked="{Binding DataContext.Portfolio.SelectAllOpenPositions, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                             </DataGridTemplateColumn.Header>
@@ -200,13 +203,13 @@
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
-                                        <DataGridTextColumn Header="Instrument" Binding="{Binding Ticker}" Width="2.5*" />
-                                        <DataGridTextColumn Header="Product" Binding="{Binding ProductType}" Width="*" />
+                                        <DataGridTextColumn Header="Instrument" Binding="{Binding Ticker}" Width="2*" />
+                                        <DataGridTextColumn Header="Product" Binding="{Binding ProductType}" Width="0.8*" />
                                         <DataGridTextColumn Header="Qty" Binding="{Binding Quantity}" Width="0.7*" />
                                         <DataGridTextColumn Header="Avg. Price" Binding="{Binding AveragePrice, StringFormat='N2'}" Width="*" />
                                         <DataGridTextColumn Header="LTP" Binding="{Binding LastTradedPrice, StringFormat='N2'}" Width="*" />
                                         <DataGridTextColumn Header="P&amp;L" Binding="{Binding UnrealizedPnl, StringFormat='N2'}" CellStyle="{StaticResource ProfitLossCellStyle}" Width="*"/>
-                                        <DataGridTemplateColumn Header="Actions" Width="Auto">
+                                        <DataGridTemplateColumn Header="Actions" Width="150">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -227,7 +230,9 @@
 
                         <!-- Closed Positions -->
                         <GroupBox Grid.Row="2" Header="Closed Positions" FontWeight="Bold" FontSize="14" Padding="5">
-                            <DataGrid ItemsSource="{Binding Portfolio.ClosedPositions}" VerticalScrollBarVisibility="Auto">
+                            <DataGrid ItemsSource="{Binding Portfolio.ClosedPositions}" 
+                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                      VerticalScrollBarVisibility="Auto">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Instrument" Binding="{Binding Ticker}" Width="2.5*" />
                                     <DataGridTextColumn Header="Product" Binding="{Binding ProductType}" Width="*" />
