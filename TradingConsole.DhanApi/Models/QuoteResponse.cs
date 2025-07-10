@@ -1,17 +1,16 @@
-﻿using Newtonsoft.Json;
+﻿using System.Text.Json.Serialization;
 
 namespace TradingConsole.DhanApi.Models
 {
     public class QuoteResponse
     {
-        // FIX: Property is now nullable to prevent compiler warnings (CS8618).
-        [JsonProperty("securityId")]
+        [JsonPropertyName("securityId")]
         public string? SecurityId { get; set; }
 
-        [JsonProperty("ltp")]
+        [JsonPropertyName("ltp")]
         public decimal Ltp { get; set; }
 
-        [JsonProperty("prev_close")]
+        [JsonPropertyName("prev_close")]
         public decimal PreviousClose { get; set; }
     }
 }

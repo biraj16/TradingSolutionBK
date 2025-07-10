@@ -5,9 +5,10 @@ using System.IO;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 using TradingConsole.DhanApi.Models;
 using TradingConsole.DhanApi.Models.WebSocket;
 
@@ -19,11 +20,9 @@ namespace TradingConsole.DhanApi
         private readonly string _clientId;
         private readonly string _accessToken;
         private CancellationTokenSource? _cancellationTokenSource;
+        private readonly JsonSerializerOptions _jsonOptions;
 
-        // Using a semaphore ensures that subscription requests are sent one at a time, preventing race conditions.
         private readonly SemaphoreSlim _subscriptionSemaphore = new SemaphoreSlim(1, 1);
-
-        // The Dhan API has a limit on how many instruments can be subscribed to in a single request.
         private const int MAX_INSTRUMENTS_PER_REQUEST = 99;
 
         #region Public Events
@@ -38,22 +37,22 @@ namespace TradingConsole.DhanApi
         #region WebSocket Message Models
         private class WebSocketSubscriptionInstrument
         {
-            [JsonProperty("exchangeSegment")]
+            [JsonPropertyName("exchangeSegment")]
             public string ExchangeSegment { get; set; } = string.Empty;
 
-            [JsonProperty("securityId")]
+            [JsonPropertyName("securityId")]
             public string SecurityId { get; set; } = string.Empty;
         }
 
         private class WebSocketSubscriptionRequest
         {
-            [JsonProperty("requestCode")]
+            [JsonPropertyName("requestCode")]
             public int RequestCode { get; set; }
 
-            [JsonProperty("instrumentCount")]
+            [JsonPropertyName("instrumentCount")]
             public int InstrumentCount { get; set; }
 
-            [JsonProperty("instrumentList")]
+            [JsonPropertyName("instrumentList")]
             public List<WebSocketSubscriptionInstrument> InstrumentList { get; set; } = new List<WebSocketSubscriptionInstrument>();
         }
         #endregion
@@ -62,12 +61,13 @@ namespace TradingConsole.DhanApi
         {
             _clientId = clientId;
             _accessToken = accessToken;
+            _jsonOptions = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            };
         }
 
-        /// <summary>
-        /// Establishes a connection to the Dhan WebSocket feed. If already connected, it does nothing.
-        /// Once connected, it fires the OnConnected event and starts a background task to listen for messages.
-        /// </summary>
         public async Task ConnectAsync()
         {
             if (_webSocket != null && _webSocket.State == WebSocketState.Open) return;
@@ -82,7 +82,6 @@ namespace TradingConsole.DhanApi
                 await _webSocket.ConnectAsync(uri, _cancellationTokenSource.Token);
                 Debug.WriteLine("[WebSocket] Connected Successfully.");
                 OnConnected?.Invoke();
-                // Start the message receiving loop in a non-blocking way.
                 _ = Task.Run(StartReceivingAsync, _cancellationTokenSource.Token);
             }
             catch (Exception ex)
@@ -109,15 +108,12 @@ namespace TradingConsole.DhanApi
             _webSocket = null;
         }
 
-        /// <summary>
-        /// Subscribes to the live order feed to receive real-time updates on order status.
-        /// </summary>
         public async Task SubscribeToOrderFeedAsync()
         {
             if (_webSocket?.State != WebSocketState.Open || _cancellationTokenSource == null) return;
 
             var orderSubscriptionRequest = new { customers = new[] { _clientId } };
-            string jsonRequest = JsonConvert.SerializeObject(orderSubscriptionRequest);
+            string jsonRequest = JsonSerializer.Serialize(orderSubscriptionRequest, _jsonOptions);
             var buffer = new ArraySegment<byte>(Encoding.UTF8.GetBytes(jsonRequest));
 
             try
@@ -131,12 +127,6 @@ namespace TradingConsole.DhanApi
             }
         }
 
-        /// <summary>
-        /// Subscribes to market data for a list of instruments.
-        /// Automatically handles chunking the request if the number of instruments exceeds the API limit.
-        /// </summary>
-        /// <param name="instruments">A dictionary of [SecurityId, SegmentId].</param>
-        /// <param name="feedType">The type of feed to subscribe to (15 for Ticker, 17 for Quote+OI).</param>
         public async Task SubscribeToInstrumentsAsync(Dictionary<string, int> instruments, int feedType = 15)
         {
             if (_webSocket?.State != WebSocketState.Open || !instruments.Any() || _cancellationTokenSource == null)
@@ -148,7 +138,6 @@ namespace TradingConsole.DhanApi
             await _subscriptionSemaphore.WaitAsync(_cancellationTokenSource.Token);
             try
             {
-                // If the list is too large, break it into smaller, manageable chunks.
                 if (instruments.Count > MAX_INSTRUMENTS_PER_REQUEST)
                 {
                     Debug.WriteLine($"[WebSocket] INFO: Subscribing to {instruments.Count} instruments, which exceeds the limit of {MAX_INSTRUMENTS_PER_REQUEST}. Auto-chunking...");
@@ -156,7 +145,6 @@ namespace TradingConsole.DhanApi
                     foreach (var chunk in chunks)
                     {
                         await SubscribeToSingleChunkAsync(chunk, feedType);
-                        // Brief pause between sending chunks to avoid overwhelming the server.
                         await Task.Delay(300, _cancellationTokenSource.Token);
                     }
                     return;
@@ -187,7 +175,7 @@ namespace TradingConsole.DhanApi
                 InstrumentList = instrumentList
             };
 
-            string jsonRequest = JsonConvert.SerializeObject(subscriptionRequest);
+            string jsonRequest = JsonSerializer.Serialize(subscriptionRequest, _jsonOptions);
             Debug.WriteLine($"[WebSocket] Sending Subscription - FeedType: {feedType}, Count: {subscriptionRequest.InstrumentCount}");
 
             try
@@ -227,15 +215,11 @@ namespace TradingConsole.DhanApi
             };
         }
 
-        /// <summary>
-        /// The main loop for receiving messages from the WebSocket. Runs continuously in the background.
-        /// It handles both binary (market data) and text (order updates) messages.
-        /// </summary>
         private async Task StartReceivingAsync()
         {
             if (_webSocket == null || _cancellationTokenSource == null) return;
 
-            var buffer = new ArraySegment<byte>(new byte[1024 * 8]); // 8KB buffer
+            var buffer = new ArraySegment<byte>(new byte[1024 * 8]);
             try
             {
                 while (_webSocket.State == WebSocketState.Open && !_cancellationTokenSource.IsCancellationRequested)
@@ -266,9 +250,9 @@ namespace TradingConsole.DhanApi
         {
             try
             {
-                if (json.Contains("Connected")) return; // Ignore the initial connection confirmation message.
+                if (json.Contains("Connected")) return;
 
-                var orderUpdate = JsonConvert.DeserializeObject<OrderBookEntry>(json);
+                var orderUpdate = JsonSerializer.Deserialize<OrderBookEntry>(json, _jsonOptions);
                 if (orderUpdate != null && !string.IsNullOrEmpty(orderUpdate.OrderId))
                 {
                     Debug.WriteLine($"[PARSER] >>> SUCCESS: Parsed Order Update for OrderId {orderUpdate.OrderId}. Status: {orderUpdate.OrderStatus}");
@@ -290,8 +274,7 @@ namespace TradingConsole.DhanApi
                 using var stream = new MemoryStream(data.Array, data.Offset, data.Count);
                 using var reader = new BinaryReader(stream);
 
-                // A single WebSocket message can contain multiple data packets, so we loop until the stream is fully read.
-                while (reader.BaseStream.Position + 8 <= reader.BaseStream.Length) // 8 bytes for the smallest possible header
+                while (reader.BaseStream.Position + 8 <= reader.BaseStream.Length)
                 {
                     byte feedCode = reader.ReadByte();
                     ushort messageLength = reader.ReadUInt16();
@@ -302,7 +285,7 @@ namespace TradingConsole.DhanApi
                     if (messageEndPosition > reader.BaseStream.Length)
                     {
                         Debug.WriteLine($"[PARSER] Incomplete packet received. Stated length {messageLength} exceeds buffer size.");
-                        break; // Exit loop to prevent reading past the end of the stream.
+                        break;
                     }
 
                     switch (feedCode)
@@ -345,7 +328,6 @@ namespace TradingConsole.DhanApi
                             break;
                     }
 
-                    // Move the stream position to the end of the current message to read the next one.
                     reader.BaseStream.Position = messageEndPosition;
                 }
             }

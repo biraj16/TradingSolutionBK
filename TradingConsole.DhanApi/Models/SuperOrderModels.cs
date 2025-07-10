@@ -1,74 +1,74 @@
-﻿using Newtonsoft.Json;
+﻿using System.Text.Json.Serialization;
 
 namespace TradingConsole.DhanApi.Models
 {
-    // CORRECTED: This model now matches the /v2/super/orders endpoint
     public class SuperOrderRequest
     {
-        [JsonProperty("dhanClientId")]
-        public string DhanClientId { get; set; }
+        [JsonPropertyName("dhanClientId")]
+        public string DhanClientId { get; set; } = string.Empty;
 
-        [JsonProperty("correlationId", NullValueHandling = NullValueHandling.Ignore)]
+        [JsonPropertyName("correlationId")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? CorrelationId { get; set; }
 
-        [JsonProperty("transactionType")]
-        public string TransactionType { get; set; }
+        [JsonPropertyName("transactionType")]
+        public string TransactionType { get; set; } = string.Empty;
 
-        [JsonProperty("exchangeSegment")]
-        public string ExchangeSegment { get; set; }
+        [JsonPropertyName("exchangeSegment")]
+        public string ExchangeSegment { get; set; } = string.Empty;
 
-        [JsonProperty("productType")]
-        public string ProductType { get; set; }
+        [JsonPropertyName("productType")]
+        public string ProductType { get; set; } = string.Empty;
 
-        [JsonProperty("orderType")]
-        public string OrderType { get; set; }
+        [JsonPropertyName("orderType")]
+        public string OrderType { get; set; } = string.Empty;
 
-        [JsonProperty("validity")]
+        [JsonPropertyName("validity")]
         public string Validity { get; set; } = "DAY";
 
-        [JsonProperty("securityId")]
-        public string SecurityId { get; set; }
+        [JsonPropertyName("securityId")]
+        public string SecurityId { get; set; } = string.Empty;
 
-        [JsonProperty("quantity")]
+        [JsonPropertyName("quantity")]
         public int Quantity { get; set; }
 
-        [JsonProperty("price", NullValueHandling = NullValueHandling.Ignore)]
+        [JsonPropertyName("price")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public decimal? Price { get; set; }
 
-        // --- CORRECTED Field Names ---
-        [JsonProperty("targetPrice")]
+        [JsonPropertyName("targetPrice")]
         public decimal TargetPrice { get; set; }
 
-        [JsonProperty("stopLossPrice")]
+        [JsonPropertyName("stopLossPrice")]
         public decimal StopLossPrice { get; set; }
 
-        [JsonProperty("trailingJump", NullValueHandling = NullValueHandling.Ignore)]
+        [JsonPropertyName("trailingJump")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public decimal? TrailingJump { get; set; }
     }
 
-    // CORRECTED: This model now matches the /v2/super/orders/{id} endpoint
     public class ModifySuperOrderRequest
     {
-        [JsonProperty("dhanClientId")]
-        public string DhanClientId { get; set; }
+        [JsonPropertyName("dhanClientId")]
+        public string DhanClientId { get; set; } = string.Empty;
 
-        [JsonProperty("orderId")]
-        public string OrderId { get; set; }
+        [JsonPropertyName("orderId")]
+        public string OrderId { get; set; } = string.Empty;
 
-        [JsonProperty("quantity")]
+        [JsonPropertyName("quantity")]
         public int Quantity { get; set; }
 
-        [JsonProperty("price")]
+        [JsonPropertyName("price")]
         public decimal Price { get; set; }
 
-        // --- CORRECTED Field Names ---
-        [JsonProperty("targetPrice")]
+        [JsonPropertyName("targetPrice")]
         public decimal TargetPrice { get; set; }
 
-        [JsonProperty("stopLossPrice")]
+        [JsonPropertyName("stopLossPrice")]
         public decimal StopLossPrice { get; set; }
 
-        [JsonProperty("trailingJump", NullValueHandling = NullValueHandling.Ignore)]
+        [JsonPropertyName("trailingJump")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public decimal? TrailingJump { get; set; }
     }
 }

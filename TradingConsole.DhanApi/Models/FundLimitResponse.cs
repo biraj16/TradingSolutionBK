@@ -1,21 +1,19 @@
-﻿// In TradingConsole.DhanApi/Models/FundLimitResponse.cs
-using Newtonsoft.Json;
+﻿using System.Text.Json.Serialization;
 
 namespace TradingConsole.DhanApi.Models
 {
     public class FundLimitResponse
     {
-        // Note: The property name matches the typo in the official Dhan API documentation
-        [JsonProperty("availabelBalance")]
+        [JsonPropertyName("availabelBalance")]
         public decimal AvailableBalance { get; set; }
 
-        [JsonProperty("utilizedAmount")]
+        [JsonPropertyName("utilizedAmount")]
         public decimal UtilizedAmount { get; set; }
 
-        [JsonProperty("collateralAmount")]
+        [JsonPropertyName("collateralAmount")]
         public decimal CollateralAmount { get; set; }
 
-        [JsonProperty("withdrawableBalance")]
+        [JsonPropertyName("withdrawableBalance")]
         public decimal WithdrawableBalance { get; set; }
     }
 }

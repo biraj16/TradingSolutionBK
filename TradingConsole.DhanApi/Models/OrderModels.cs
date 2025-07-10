@@ -1,111 +1,112 @@
-﻿using Newtonsoft.Json;
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 
 namespace TradingConsole.DhanApi.Models
 {
-    // This model is for placing a NEW order
     public class OrderRequest
     {
-        [JsonProperty("dhanClientId")]
-        public string DhanClientId { get; set; }
+        [JsonPropertyName("dhanClientId")]
+        public string DhanClientId { get; set; } = string.Empty;
 
-        [JsonProperty("correlationId", NullValueHandling = NullValueHandling.Ignore)]
+        [JsonPropertyName("correlationId")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? CorrelationId { get; set; }
 
-        [JsonProperty("transactionType")]
-        public string TransactionType { get; set; }
+        [JsonPropertyName("transactionType")]
+        public string TransactionType { get; set; } = string.Empty;
 
-        [JsonProperty("exchangeSegment")]
-        public string ExchangeSegment { get; set; }
+        [JsonPropertyName("exchangeSegment")]
+        public string ExchangeSegment { get; set; } = string.Empty;
 
-        [JsonProperty("productType")]
-        public string ProductType { get; set; }
+        [JsonPropertyName("productType")]
+        public string ProductType { get; set; } = string.Empty;
 
-        [JsonProperty("orderType")]
-        public string OrderType { get; set; }
+        [JsonPropertyName("orderType")]
+        public string OrderType { get; set; } = string.Empty;
 
-        [JsonProperty("validity")]
+        [JsonPropertyName("validity")]
         public string Validity { get; set; } = "DAY";
 
-        [JsonProperty("securityId")]
-        public string SecurityId { get; set; }
+        [JsonPropertyName("securityId")]
+        public string SecurityId { get; set; } = string.Empty;
 
-        [JsonProperty("quantity")]
+        [JsonPropertyName("quantity")]
         public int Quantity { get; set; }
 
-        [JsonProperty("price", NullValueHandling = NullValueHandling.Ignore)]
+        [JsonPropertyName("price")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public decimal? Price { get; set; }
 
-        [JsonProperty("triggerPrice", NullValueHandling = NullValueHandling.Ignore)]
+        [JsonPropertyName("triggerPrice")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public decimal? TriggerPrice { get; set; }
     }
 
-    // ADDED: New model for placing a SLICE order
     public class SliceOrderRequest
     {
-        [JsonProperty("dhanClientId")]
-        public string DhanClientId { get; set; }
+        [JsonPropertyName("dhanClientId")]
+        public string DhanClientId { get; set; } = string.Empty;
 
-        [JsonProperty("transactionType")]
-        public string TransactionType { get; set; }
+        [JsonPropertyName("transactionType")]
+        public string TransactionType { get; set; } = string.Empty;
 
-        [JsonProperty("exchangeSegment")]
-        public string ExchangeSegment { get; set; }
+        [JsonPropertyName("exchangeSegment")]
+        public string ExchangeSegment { get; set; } = string.Empty;
 
-        [JsonProperty("productType")]
-        public string ProductType { get; set; }
+        [JsonPropertyName("productType")]
+        public string ProductType { get; set; } = string.Empty;
 
-        [JsonProperty("orderType")]
-        public string OrderType { get; set; } // MARKET or LIMIT
+        [JsonPropertyName("orderType")]
+        public string OrderType { get; set; } = string.Empty;
 
-        [JsonProperty("securityId")]
-        public string SecurityId { get; set; }
+        [JsonPropertyName("securityId")]
+        public string SecurityId { get; set; } = string.Empty;
 
-        [JsonProperty("totalQuantity")]
+        [JsonPropertyName("totalQuantity")]
         public int TotalQuantity { get; set; }
 
-        [JsonProperty("sliceQuantity")]
+        [JsonPropertyName("sliceQuantity")]
         public int SliceQuantity { get; set; }
 
-        [JsonProperty("interval")]
+        [JsonPropertyName("interval")]
         public int Interval { get; set; }
 
-        [JsonProperty("price", NullValueHandling = NullValueHandling.Ignore)]
+        [JsonPropertyName("price")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public decimal? Price { get; set; }
     }
 
     public class ModifyOrderRequest
     {
-        [JsonProperty("dhanClientId")]
-        public string DhanClientId { get; set; }
+        [JsonPropertyName("dhanClientId")]
+        public string DhanClientId { get; set; } = string.Empty;
 
-        [JsonProperty("orderId")]
-        public string OrderId { get; set; }
+        [JsonPropertyName("orderId")]
+        public string OrderId { get; set; } = string.Empty;
 
-        [JsonProperty("orderType")]
-        public string OrderType { get; set; }
+        [JsonPropertyName("orderType")]
+        public string OrderType { get; set; } = string.Empty;
 
-        [JsonProperty("quantity")]
+        [JsonPropertyName("quantity")]
         public int Quantity { get; set; }
 
-        [JsonProperty("price")]
+        [JsonPropertyName("price")]
         public decimal Price { get; set; }
 
-        [JsonProperty("triggerPrice")]
+        [JsonPropertyName("triggerPrice")]
         public decimal TriggerPrice { get; set; }
 
-        [JsonProperty("validity")]
+        [JsonPropertyName("validity")]
         public string Validity { get; set; } = "DAY";
     }
 
-
     public class OrderResponse
     {
-        [JsonProperty("orderId")]
+        [JsonPropertyName("orderId")]
         public string? OrderId { get; set; }
 
-        [JsonProperty("orderStatus")]
+        [JsonPropertyName("orderStatus")]
         public string? OrderStatus { get; set; }
     }
 
@@ -114,60 +115,60 @@ namespace TradingConsole.DhanApi.Models
         private string _orderStatus = string.Empty;
         private int _filledQuantity;
 
-        [JsonProperty("dhanClientId")]
+        [JsonPropertyName("dhanClientId")]
         public string DhanClientId { get; set; } = string.Empty;
 
-        [JsonProperty("orderId")]
+        [JsonPropertyName("orderId")]
         public string OrderId { get; set; } = string.Empty;
 
-        [JsonProperty("exchangeSegment")]
+        [JsonPropertyName("exchangeSegment")]
         public string ExchangeSegment { get; set; } = string.Empty;
 
-        [JsonProperty("productType")]
+        [JsonPropertyName("productType")]
         public string ProductType { get; set; } = string.Empty;
 
-        [JsonProperty("orderType")]
+        [JsonPropertyName("orderType")]
         public string OrderType { get; set; } = string.Empty;
 
-        [JsonProperty("orderStatus")]
+        [JsonPropertyName("orderStatus")]
         public string OrderStatus
         {
             get => _orderStatus;
             set { _orderStatus = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsPending)); }
         }
 
-        [JsonProperty("transactionType")]
+        [JsonPropertyName("transactionType")]
         public string TransactionType { get; set; } = string.Empty;
 
-        [JsonProperty("securityId")]
+        [JsonPropertyName("securityId")]
         public string SecurityId { get; set; } = string.Empty;
 
-        [JsonProperty("tradingSymbol")]
+        [JsonPropertyName("tradingSymbol")]
         public string TradingSymbol { get; set; } = string.Empty;
 
-        [JsonProperty("quantity")]
+        [JsonPropertyName("quantity")]
         public int Quantity { get; set; }
 
-        [JsonProperty("filledQty")]
+        [JsonPropertyName("filledQty")]
         public int FilledQuantity
         {
             get => _filledQuantity;
             set { _filledQuantity = value; OnPropertyChanged(); }
         }
 
-        [JsonProperty("price")]
+        [JsonPropertyName("price")]
         public decimal Price { get; set; }
 
-        [JsonProperty("triggerPrice")]
+        [JsonPropertyName("triggerPrice")]
         public decimal TriggerPrice { get; set; }
 
-        [JsonProperty("averageTradedPrice")]
+        [JsonPropertyName("averageTradedPrice")]
         public decimal AverageTradedPrice { get; set; }
 
-        [JsonProperty("createTime")]
+        [JsonPropertyName("createTime")]
         public string CreateTime { get; set; } = string.Empty;
 
-        [JsonProperty("updateTime")]
+        [JsonPropertyName("updateTime")]
         public string UpdateTime { get; set; } = string.Empty;
 
         [JsonIgnore]

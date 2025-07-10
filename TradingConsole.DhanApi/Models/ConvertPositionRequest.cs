@@ -1,22 +1,22 @@
-﻿using Newtonsoft.Json;
+﻿using System.Text.Json.Serialization;
 
 namespace TradingConsole.DhanApi.Models
 {
     public class ConvertPositionRequest
     {
-        [JsonProperty("dhanClientId")]
-        public string DhanClientId { get; set; }
+        [JsonPropertyName("dhanClientId")]
+        public string DhanClientId { get; set; } = string.Empty;
 
-        [JsonProperty("securityId")]
-        public string SecurityId { get; set; }
+        [JsonPropertyName("securityId")]
+        public string SecurityId { get; set; } = string.Empty;
 
-        [JsonProperty("productType")]
-        public string ProductType { get; set; }
+        [JsonPropertyName("productType")]
+        public string ProductType { get; set; } = string.Empty;
 
-        [JsonProperty("convertTo")]
-        public string ConvertTo { get; set; }
+        [JsonPropertyName("convertTo")]
+        public string ConvertTo { get; set; } = string.Empty;
 
-        [JsonProperty("quantity")]
+        [JsonPropertyName("quantity")]
         public int Quantity { get; set; }
     }
 }

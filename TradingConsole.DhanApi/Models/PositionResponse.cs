@@ -1,51 +1,49 @@
-﻿using Newtonsoft.Json;
+﻿using System.Text.Json.Serialization;
 
 namespace TradingConsole.DhanApi.Models
 {
     public class PositionResponse
     {
-        // FIX: Properties are now nullable to prevent compiler warnings (CS8618).
-        // The JSON deserializer may not always provide a value for every property.
-        [JsonProperty("securityId")]
+        [JsonPropertyName("securityId")]
         public string? SecurityId { get; set; }
 
-        [JsonProperty("tradingSymbol")]
+        [JsonPropertyName("tradingSymbol")]
         public string? TradingSymbol { get; set; }
 
-        [JsonProperty("exchange")]
+        [JsonPropertyName("exchange")]
         public string? Exchange { get; set; }
 
-        [JsonProperty("productType")]
+        [JsonPropertyName("productType")]
         public string? ProductType { get; set; }
 
-        [JsonProperty("positionType")]
+        [JsonPropertyName("positionType")]
         public string? PositionType { get; set; }
 
-        [JsonProperty("netQty")]
+        [JsonPropertyName("netQty")]
         public int NetQuantity { get; set; }
 
-        [JsonProperty("buyAvg")]
+        [JsonPropertyName("buyAvg")]
         public decimal BuyAverage { get; set; }
 
-        [JsonProperty("sellAvg")]
+        [JsonPropertyName("sellAvg")]
         public decimal SellAverage { get; set; }
 
-        [JsonProperty("buyQty")]
+        [JsonPropertyName("buyQty")]
         public int BuyQuantity { get; set; }
 
-        [JsonProperty("sellQty")]
+        [JsonPropertyName("sellQty")]
         public int SellQuantity { get; set; }
 
-        [JsonProperty("costPrice")]
+        [JsonPropertyName("costPrice")]
         public decimal CostPrice { get; set; }
 
-        [JsonProperty("ltp")]
+        [JsonPropertyName("ltp")]
         public decimal LastTradedPrice { get; set; }
 
-        [JsonProperty("unrealizedProfit")]
+        [JsonPropertyName("unrealizedProfit")]
         public decimal UnrealizedProfit { get; set; }
 
-        [JsonProperty("realizedProfit")]
+        [JsonPropertyName("realizedProfit")]
         public decimal RealizedProfit { get; set; }
     }
 }

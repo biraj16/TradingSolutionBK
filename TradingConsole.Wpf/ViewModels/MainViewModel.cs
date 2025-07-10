@@ -51,7 +51,6 @@ namespace TradingConsole.Wpf.ViewModels
         private readonly Dictionary<string, OptionData> _optionChainCache = new();
         private readonly SemaphoreSlim _ivCacheSemaphore = new SemaphoreSlim(1, 1);
 
-        // --- PERFORMANCE OPTIMIZATION: Dictionaries for fast lookups ---
         private Dictionary<string, DashboardInstrument> _dashboardInstrumentMap = new();
         private Dictionary<string, Position> _openPositionsMap = new();
         #endregion
@@ -167,7 +166,6 @@ namespace TradingConsole.Wpf.ViewModels
             Portfolio = new PortfolioViewModel();
             AnalysisTab = new AnalysisTabViewModel();
 
-            // --- PERFORMANCE OPTIMIZATION: Subscribe to collection changes to update maps ---
             Dashboard.MonitoredInstruments.CollectionChanged += (s, e) => RebuildDashboardMap();
             Portfolio.OpenPositions.CollectionChanged += (s, e) => RebuildPositionsMap();
 
@@ -812,7 +810,6 @@ namespace TradingConsole.Wpf.ViewModels
             {
                 if (string.IsNullOrEmpty(packet.SecurityId)) return;
 
-                // --- PERFORMANCE OPTIMIZATION: Use dictionary for faster lookups ---
                 if (_dashboardInstrumentMap.TryGetValue(packet.SecurityId, out var instrumentToUpdate))
                 {
                     instrumentToUpdate.LTP = packet.LastPrice;
@@ -1431,11 +1428,12 @@ namespace TradingConsole.Wpf.ViewModels
 
         private Task UpdateStatusAsync(string message)
         {
-            return Application.Current.Dispatcher.InvokeAsync(() =>
+            // --- FIX: Add a null check to prevent crash on shutdown ---
+            return Application.Current?.Dispatcher.InvokeAsync(() =>
             {
                 StatusMessage = message;
                 OnPropertyChanged(nameof(StatusMessage));
-            }).Task;
+            }).Task ?? Task.CompletedTask;
         }
 
         // --- PERFORMANCE OPTIMIZATION: Methods to rebuild lookup dictionaries ---
@@ -1448,7 +1446,6 @@ namespace TradingConsole.Wpf.ViewModels
         {
             _openPositionsMap = Portfolio.OpenPositions.ToDictionary(p => p.SecurityId);
         }
-
         #endregion
 
         #region Boilerplate

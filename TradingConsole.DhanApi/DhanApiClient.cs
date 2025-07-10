@@ -4,16 +4,18 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 using TradingConsole.DhanApi.Models;
 
 namespace TradingConsole.DhanApi
 {
     public class DhanApiClient
     {
-        private readonly HttpClient _httpClient;
+        private static readonly HttpClient _httpClient = new HttpClient { BaseAddress = new Uri("https://api.dhan.co") };
+        private readonly JsonSerializerOptions _jsonOptions;
 
         private readonly SemaphoreSlim _orderApiSemaphore = new SemaphoreSlim(1, 1);
         private readonly SemaphoreSlim _optionChainApiSemaphore = new SemaphoreSlim(1, 1);
@@ -21,62 +23,63 @@ namespace TradingConsole.DhanApi
 
         private class OptionChainRequestPayload
         {
-            [JsonProperty("UnderlyingScrip")]
+            [JsonPropertyName("UnderlyingScrip")]
             public int UnderlyingScrip { get; set; }
 
-            [JsonProperty("UnderlyingSeg")]
-            public string UnderlyingSeg { get; set; }
+            [JsonPropertyName("UnderlyingSeg")]
+            public string UnderlyingSeg { get; set; } = string.Empty;
 
-            [JsonProperty("Expiry", NullValueHandling = NullValueHandling.Ignore)]
+            [JsonPropertyName("Expiry")]
+            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
             public string? Expiry { get; set; }
         }
 
         private class IntradayDataRequest
         {
-            [JsonProperty("securityId")]
+            [JsonPropertyName("securityId")]
             public string SecurityId { get; set; } = string.Empty;
 
-            [JsonProperty("exchangeSegment")]
+            [JsonPropertyName("exchangeSegment")]
             public string ExchangeSegment { get; set; } = string.Empty;
 
-            [JsonProperty("instrument")]
+            [JsonPropertyName("instrument")]
             public string Instrument { get; set; } = string.Empty;
 
-            [JsonProperty("interval")]
+            [JsonPropertyName("interval")]
             public string Interval { get; set; } = "1";
 
-            [JsonProperty("oi")]
+            [JsonPropertyName("oi")]
             public bool Oi { get; set; } = true;
 
-            [JsonProperty("fromDate")]
+            [JsonPropertyName("fromDate")]
             public string FromDate { get; set; } = string.Empty;
 
-            [JsonProperty("toDate")]
+            [JsonPropertyName("toDate")]
             public string ToDate { get; set; } = string.Empty;
         }
 
-        // CORRECTED: This is now the top-level response object, matching the API's actual JSON structure.
         public class HistoricalDataPoints
         {
-            [JsonProperty("open")]
+            [JsonPropertyName("open")]
             public List<decimal> Open { get; set; } = new List<decimal>();
 
-            [JsonProperty("high")]
+            [JsonPropertyName("high")]
             public List<decimal> High { get; set; } = new List<decimal>();
 
-            [JsonProperty("low")]
+            [JsonPropertyName("low")]
             public List<decimal> Low { get; set; } = new List<decimal>();
 
-            [JsonProperty("close")]
+            [JsonPropertyName("close")]
             public List<decimal> Close { get; set; } = new List<decimal>();
 
-            [JsonProperty("volume")]
-            public List<long> Volume { get; set; } = new List<long>();
+            // --- FIX: Changed to decimal to handle API format inconsistencies ---
+            [JsonPropertyName("volume")]
+            public List<decimal> Volume { get; set; } = new List<decimal>();
 
-            [JsonProperty("timestamp")]
+            [JsonPropertyName("timestamp")]
             public List<long> StartTime { get; set; } = new List<long>();
 
-            [JsonProperty("open_interest")]
+            [JsonPropertyName("open_interest")]
             public List<long> OpenInterest { get; set; } = new List<long>();
         }
 
@@ -88,12 +91,16 @@ namespace TradingConsole.DhanApi
             if (string.IsNullOrWhiteSpace(accessToken))
                 throw new ArgumentException("Access token cannot be null or empty.", nameof(accessToken));
 
-            _httpClient = new HttpClient { BaseAddress = new Uri("https://api.dhan.co") };
-
             _httpClient.DefaultRequestHeaders.Clear();
             _httpClient.DefaultRequestHeaders.Add("access-token", accessToken);
             _httpClient.DefaultRequestHeaders.Add("client-id", clientId);
             _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            _jsonOptions = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            };
         }
 
         private async Task<T?> HandleResponse<T>(HttpResponseMessage response, string apiName) where T : class
@@ -102,7 +109,7 @@ namespace TradingConsole.DhanApi
             if (response.IsSuccessStatusCode)
             {
                 Debug.WriteLine($"SUCCESS ({apiName}): {response.StatusCode}");
-                return JsonConvert.DeserializeObject<T>(responseBody);
+                return JsonSerializer.Deserialize<T>(responseBody, _jsonOptions);
             }
             else
             {
@@ -111,12 +118,13 @@ namespace TradingConsole.DhanApi
             }
         }
 
-        private async Task<T?> ExecuteOrderApiCall<T>(Func<Task<HttpResponseMessage>> apiCallFunc, string apiName) where T : class
+        private async Task<T?> ExecuteApiCall<T>(SemaphoreSlim semaphore, Func<Task<HttpResponseMessage>> apiCallFunc, string apiName, int delayMs = 250) where T : class
         {
-            await _orderApiSemaphore.WaitAsync();
+            await semaphore.WaitAsync();
             try
             {
                 var response = await apiCallFunc();
+                if (delayMs > 0) await Task.Delay(delayMs);
                 return await HandleResponse<T>(response, apiName);
             }
             catch (Exception ex) when (ex is HttpRequestException || ex is JsonException || ex is DhanApiException)
@@ -126,57 +134,37 @@ namespace TradingConsole.DhanApi
             }
             finally
             {
-                _orderApiSemaphore.Release();
+                semaphore.Release();
             }
         }
 
-        private async Task<T?> ExecuteOptionChainApiCall<T>(Func<Task<HttpResponseMessage>> apiCallFunc, string apiName) where T : class
-        {
-            await _optionChainApiSemaphore.WaitAsync();
-            try
-            {
-                var response = await apiCallFunc();
-                await Task.Delay(3100);
-                return await HandleResponse<T>(response, apiName);
-            }
-            catch (Exception ex) when (ex is HttpRequestException || ex is JsonException || ex is DhanApiException)
-            {
-                Debug.WriteLine($"[DhanApiClient] Exception in {apiName}: {ex.Message}");
-                throw new DhanApiException($"Error in {apiName}. See inner exception for details.", ex);
-            }
-            finally
-            {
-                _optionChainApiSemaphore.Release();
-            }
-        }
-
-        private async Task<T?> ExecuteGeneralApiCall<T>(Func<Task<HttpResponseMessage>> apiCallFunc, string apiName) where T : class
-        {
-            await _generalApiSemaphore.WaitAsync();
-            try
-            {
-                var response = await apiCallFunc();
-                await Task.Delay(250);
-                return await HandleResponse<T>(response, apiName);
-            }
-            catch (Exception ex) when (ex is HttpRequestException || ex is JsonException || ex is DhanApiException)
-            {
-                Debug.WriteLine($"[DhanApiClient] Exception in {apiName}: {ex.Message}");
-                throw new DhanApiException($"Error in {apiName}. See inner exception for details.", ex);
-            }
-            finally
-            {
-                _generalApiSemaphore.Release();
-            }
-        }
-
-        // CORRECTED: The method now returns HistoricalDataPoints directly.
         public async Task<HistoricalDataPoints?> GetIntradayHistoricalDataAsync(ScripInfo scripInfo, string interval = "1", DateTime? customDate = null)
         {
-            var dateToUse = customDate?.Date ?? TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("India Standard Time")).Date;
+            DateTime dateToRequest;
 
-            var fromDate = dateToUse.ToString("yyyy-MM-dd") + " 09:15:00";
-            var toDate = dateToUse.ToString("yyyy-MM-dd") + " 15:30:00";
+            if (customDate.HasValue)
+            {
+                dateToRequest = customDate.Value.Date;
+            }
+            else
+            {
+                var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+                var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, istZone);
+
+                dateToRequest = istNow.Date.AddDays(-1);
+
+                if (dateToRequest.DayOfWeek == DayOfWeek.Saturday)
+                {
+                    dateToRequest = dateToRequest.AddDays(-1);
+                }
+                else if (dateToRequest.DayOfWeek == DayOfWeek.Sunday)
+                {
+                    dateToRequest = dateToRequest.AddDays(-2);
+                }
+            }
+
+            var fromDate = dateToRequest.ToString("yyyy-MM-dd") + " 09:15:00";
+            var toDate = dateToRequest.ToString("yyyy-MM-dd") + " 15:30:00";
 
             var requestBody = new IntradayDataRequest
             {
@@ -189,76 +177,76 @@ namespace TradingConsole.DhanApi
                 Oi = true
             };
 
-            string jsonPayload = JsonConvert.SerializeObject(requestBody);
+            string jsonPayload = JsonSerializer.Serialize(requestBody, _jsonOptions);
 
-            Debug.WriteLine($"[DhanApiClient] Sending Intraday Request: {jsonPayload}");
+            Debug.WriteLine($"[GetIntradayHistoricalData] Request Payload: {jsonPayload}");
 
             var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-            // CORRECTED: The call now expects to deserialize directly into HistoricalDataPoints.
-            return await ExecuteGeneralApiCall<HistoricalDataPoints>(() => _httpClient.PostAsync("/v2/charts/intraday", content), "GetIntradayHistoricalData");
+
+            return await ExecuteApiCall<HistoricalDataPoints>(_generalApiSemaphore, () => _httpClient.PostAsync("/v2/charts/intraday", content), "GetIntradayHistoricalData");
         }
 
         public async Task<List<PositionResponse>?> GetPositionsAsync()
         {
-            return await ExecuteGeneralApiCall<List<PositionResponse>>(() => _httpClient.GetAsync("/v2/positions"), "GetPositions");
+            return await ExecuteApiCall<List<PositionResponse>>(_generalApiSemaphore, () => _httpClient.GetAsync("/v2/positions"), "GetPositions");
         }
 
         public async Task<FundLimitResponse?> GetFundLimitAsync()
         {
-            return await ExecuteGeneralApiCall<FundLimitResponse>(() => _httpClient.GetAsync("/v2/fundlimit"), "GetFundLimit");
+            return await ExecuteApiCall<FundLimitResponse>(_generalApiSemaphore, () => _httpClient.GetAsync("/v2/fundlimit"), "GetFundLimit");
         }
 
         public async Task<ExpiryListResponse?> GetExpiryListAsync(string underlyingScripId, string segment)
         {
             var payload = new OptionChainRequestPayload { UnderlyingScrip = int.Parse(underlyingScripId), UnderlyingSeg = segment };
-            string jsonPayload = JsonConvert.SerializeObject(payload);
+            string jsonPayload = JsonSerializer.Serialize(payload, _jsonOptions);
             var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-            return await ExecuteGeneralApiCall<ExpiryListResponse>(() => _httpClient.PostAsync("/v2/optionchain/expirylist", content), "GetExpiryList");
+            return await ExecuteApiCall<ExpiryListResponse>(_generalApiSemaphore, () => _httpClient.PostAsync("/v2/optionchain/expirylist", content), "GetExpiryList");
         }
 
         public async Task<OptionChainResponse?> GetOptionChainAsync(string underlyingScripId, string segment, string expiryDate)
         {
             var payload = new OptionChainRequestPayload { UnderlyingScrip = int.Parse(underlyingScripId), UnderlyingSeg = segment, Expiry = expiryDate };
-            string jsonPayload = JsonConvert.SerializeObject(payload);
+            string jsonPayload = JsonSerializer.Serialize(payload, _jsonOptions);
             var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-            return await ExecuteOptionChainApiCall<OptionChainResponse>(() => _httpClient.PostAsync("/v2/optionchain", content), "GetOptionChain");
+            return await ExecuteApiCall<OptionChainResponse>(_optionChainApiSemaphore, () => _httpClient.PostAsync("/v2/optionchain", content), "GetOptionChain", 3100);
         }
 
         public async Task<QuoteResponse?> GetQuoteAsync(string securityId)
         {
             if (string.IsNullOrEmpty(securityId)) return null;
-            return await ExecuteGeneralApiCall<QuoteResponse>(() => _httpClient.GetAsync($"/v2/marketdata/quote/{securityId}"), "GetQuote");
+            return await ExecuteApiCall<QuoteResponse>(_generalApiSemaphore, () => _httpClient.GetAsync($"/v2/marketdata/quote/{securityId}"), "GetQuote");
         }
 
         public async Task<OrderResponse?> PlaceOrderAsync(OrderRequest orderRequest)
         {
-            var jsonPayload = JsonConvert.SerializeObject(orderRequest);
+            var jsonPayload = JsonSerializer.Serialize(orderRequest, _jsonOptions);
             var httpContent = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-            return await ExecuteOrderApiCall<OrderResponse>(() => _httpClient.PostAsync("/v2/orders", httpContent), "PlaceOrder");
+            return await ExecuteApiCall<OrderResponse>(_orderApiSemaphore, () => _httpClient.PostAsync("/v2/orders", httpContent), "PlaceOrder");
         }
 
         public async Task<OrderResponse?> PlaceSliceOrderAsync(SliceOrderRequest sliceRequest)
         {
-            var jsonPayload = JsonConvert.SerializeObject(sliceRequest);
+            var jsonPayload = JsonSerializer.Serialize(sliceRequest, _jsonOptions);
             var httpContent = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-            return await ExecuteOrderApiCall<OrderResponse>(() => _httpClient.PostAsync("/v2/orders/slice", httpContent), "PlaceSliceOrder");
+            return await ExecuteApiCall<OrderResponse>(_orderApiSemaphore, () => _httpClient.PostAsync("/v2/orders/slice", httpContent), "PlaceSliceOrder");
         }
 
         public async Task<List<OrderBookEntry>?> GetOrderBookAsync()
         {
-            return await ExecuteGeneralApiCall<List<OrderBookEntry>>(() => _httpClient.GetAsync("/v2/orders"), "GetOrderBook");
+            return await ExecuteApiCall<List<OrderBookEntry>>(_generalApiSemaphore, () => _httpClient.GetAsync("/v2/orders"), "GetOrderBook");
         }
 
         public async Task<OrderResponse?> ModifyOrderAsync(ModifyOrderRequest modifyRequest)
         {
-            var jsonPayload = JsonConvert.SerializeObject(modifyRequest);
+            var jsonPayload = JsonSerializer.Serialize(modifyRequest, _jsonOptions);
             var httpContent = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-            return await ExecuteOrderApiCall<OrderResponse>(() => _httpClient.PutAsync($"/v2/orders/{modifyRequest.OrderId}", httpContent), "ModifyOrder");
+            return await ExecuteApiCall<OrderResponse>(_orderApiSemaphore, () => _httpClient.PutAsync($"/v2/orders/{modifyRequest.OrderId}", httpContent), "ModifyOrder");
         }
 
         public async Task<OrderResponse?> CancelOrderAsync(string orderId)
         {
-            return await ExecuteOrderApiCall<OrderResponse>(() => _httpClient.DeleteAsync($"/v2/orders/{orderId}"), "CancelOrder");
+            return await ExecuteApiCall<OrderResponse>(_orderApiSemaphore, () => _httpClient.DeleteAsync($"/v2/orders/{orderId}"), "CancelOrder");
         }
 
         public async Task<bool> ConvertPositionAsync(ConvertPositionRequest request)
@@ -266,7 +254,7 @@ namespace TradingConsole.DhanApi
             await _orderApiSemaphore.WaitAsync();
             try
             {
-                var jsonPayload = JsonConvert.SerializeObject(request);
+                var jsonPayload = JsonSerializer.Serialize(request, _jsonOptions);
                 var httpContent = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
                 var response = await _httpClient.PostAsync("/v2/positions/convert", httpContent);
                 if (!response.IsSuccessStatusCode)
@@ -288,21 +276,21 @@ namespace TradingConsole.DhanApi
 
         public async Task<OrderResponse?> PlaceSuperOrderAsync(SuperOrderRequest orderRequest)
         {
-            var jsonPayload = JsonConvert.SerializeObject(orderRequest);
+            var jsonPayload = JsonSerializer.Serialize(orderRequest, _jsonOptions);
             var httpContent = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-            return await ExecuteOrderApiCall<OrderResponse>(() => _httpClient.PostAsync("/v2/super/orders", httpContent), "PlaceSuperOrder");
+            return await ExecuteApiCall<OrderResponse>(_orderApiSemaphore, () => _httpClient.PostAsync("/v2/super/orders", httpContent), "PlaceSuperOrder");
         }
 
         public async Task<OrderResponse?> ModifySuperOrderAsync(ModifySuperOrderRequest modifyRequest)
         {
-            var jsonPayload = JsonConvert.SerializeObject(modifyRequest);
+            var jsonPayload = JsonSerializer.Serialize(modifyRequest, _jsonOptions);
             var httpContent = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-            return await ExecuteOrderApiCall<OrderResponse>(() => _httpClient.PutAsync($"/v2/super/orders/{modifyRequest.OrderId}", httpContent), "ModifySuperOrder");
+            return await ExecuteApiCall<OrderResponse>(_orderApiSemaphore, () => _httpClient.PutAsync($"/v2/super/orders/{modifyRequest.OrderId}", httpContent), "ModifySuperOrder");
         }
 
         public async Task<OrderResponse?> CancelSuperOrderAsync(string orderId)
         {
-            return await ExecuteOrderApiCall<OrderResponse>(() => _httpClient.DeleteAsync($"/v2/super/orders/{orderId}"), "CancelSuperOrder");
+            return await ExecuteApiCall<OrderResponse>(_orderApiSemaphore, () => _httpClient.DeleteAsync($"/v2/super/orders/{orderId}"), "CancelSuperOrder");
         }
     }
 }
