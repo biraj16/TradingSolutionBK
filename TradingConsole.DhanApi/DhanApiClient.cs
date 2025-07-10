@@ -72,15 +72,16 @@ namespace TradingConsole.DhanApi
             [JsonPropertyName("close")]
             public List<decimal> Close { get; set; } = new List<decimal>();
 
-            // --- FIX: Changed to decimal to handle API format inconsistencies ---
             [JsonPropertyName("volume")]
             public List<decimal> Volume { get; set; } = new List<decimal>();
 
+            // --- FIX: Using 'timestamp' as per your log file's raw JSON ---
             [JsonPropertyName("timestamp")]
-            public List<long> StartTime { get; set; } = new List<long>();
+            public List<decimal> StartTime { get; set; } = new List<decimal>();
 
+            // --- FIX: Changed to decimal to match the API response (e.g., 0.0) ---
             [JsonPropertyName("open_interest")]
-            public List<long> OpenInterest { get; set; } = new List<long>();
+            public List<decimal> OpenInterest { get; set; } = new List<decimal>();
         }
 
 
@@ -108,6 +109,10 @@ namespace TradingConsole.DhanApi
             string responseBody = await response.Content.ReadAsStringAsync();
             if (response.IsSuccessStatusCode)
             {
+                if (apiName == "GetIntradayHistoricalData")
+                {
+                    Debug.WriteLine($"[DEBUG_HISTORICAL] Raw JSON Response for {apiName}: {responseBody}");
+                }
                 Debug.WriteLine($"SUCCESS ({apiName}): {response.StatusCode}");
                 return JsonSerializer.Deserialize<T>(responseBody, _jsonOptions);
             }
@@ -151,7 +156,12 @@ namespace TradingConsole.DhanApi
                 var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
                 var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, istZone);
 
-                dateToRequest = istNow.Date.AddDays(-1);
+                dateToRequest = istNow.Date;
+
+                if (istNow.TimeOfDay < new TimeSpan(9, 15, 0))
+                {
+                    dateToRequest = dateToRequest.AddDays(-1);
+                }
 
                 if (dateToRequest.DayOfWeek == DayOfWeek.Saturday)
                 {
@@ -163,8 +173,10 @@ namespace TradingConsole.DhanApi
                 }
             }
 
-            var fromDate = dateToRequest.ToString("yyyy-MM-dd") + " 09:15:00";
-            var toDate = dateToRequest.ToString("yyyy-MM-dd") + " 15:30:00";
+            Debug.WriteLine($"[DEBUG_HISTORICAL] Requesting intraday data for date: {dateToRequest:yyyy-MM-dd}");
+
+            var fromDate = dateToRequest.ToString("yyyy-MM-dd");
+            var toDate = dateToRequest.ToString("yyyy-MM-dd");
 
             var requestBody = new IntradayDataRequest
             {
@@ -178,11 +190,10 @@ namespace TradingConsole.DhanApi
             };
 
             string jsonPayload = JsonSerializer.Serialize(requestBody, _jsonOptions);
-
             Debug.WriteLine($"[GetIntradayHistoricalData] Request Payload: {jsonPayload}");
-
             var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
+            // --- CORRECTED: Using v2 endpoint as confirmed by user's curl example ---
             return await ExecuteApiCall<HistoricalDataPoints>(_generalApiSemaphore, () => _httpClient.PostAsync("/v2/charts/intraday", content), "GetIntradayHistoricalData");
         }
 

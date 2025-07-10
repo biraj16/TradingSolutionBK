@@ -201,46 +201,77 @@ namespace TradingConsole.Wpf.Services
         private async Task BackfillDataIfNeededAsync(DashboardInstrument instrument)
         {
             _backfilledInstruments.Add(instrument.SecurityId);
+            Debug.WriteLine($"[DEBUG_BACKFILL] Starting backfill process for {instrument.DisplayName} ({instrument.SecurityId}).");
 
             try
             {
                 var scripInfo = _scripMasterService.FindBySecurityId(instrument.SecurityId);
-                if (scripInfo == null) return;
+                if (scripInfo == null)
+                {
+                    Debug.WriteLine($"[DEBUG_BACKFILL] FAILED: Could not find scrip info for {instrument.SecurityId}.");
+                    return;
+                }
 
                 var historicalData = await _apiClient.GetIntradayHistoricalDataAsync(scripInfo);
 
-                if (historicalData?.Open != null && historicalData.Open.Any())
+                if (historicalData?.Open != null && historicalData.StartTime != null && historicalData.Open.Any())
                 {
+                    Debug.WriteLine($"[DEBUG_BACKFILL] SUCCESS: Received {historicalData.Open.Count} historical data points for {instrument.DisplayName}.");
+                    Debug.WriteLine($"[DEBUG_BACKFILL] StartTime count: {historicalData.StartTime.Count}, Open count: {historicalData.Open.Count}, Close count: {historicalData.Close.Count}.");
+
                     var candles = new List<Candle>();
                     for (int i = 0; i < historicalData.Open.Count; i++)
                     {
+                        if (i >= historicalData.StartTime.Count || i >= historicalData.High.Count || i >= historicalData.Low.Count || i >= historicalData.Close.Count || i >= historicalData.Volume.Count)
+                        {
+                            Debug.WriteLine($"[DEBUG_BACKFILL] WARNING: Mismatch in historical data array lengths at index {i}. Stopping candle creation.");
+                            break;
+                        }
+
+                        // --- FIX: Safely cast the decimal values from the API to the expected types ---
                         var candle = new Candle
                         {
-                            Timestamp = DateTimeOffset.FromUnixTimeSeconds(historicalData.StartTime[i]).UtcDateTime,
+                            Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)historicalData.StartTime[i]).UtcDateTime,
                             Open = historicalData.Open[i],
                             High = historicalData.High[i],
                             Low = historicalData.Low[i],
                             Close = historicalData.Close[i],
                             Volume = (long)historicalData.Volume[i],
-                            OpenInterest = historicalData.OpenInterest.Count > i ? historicalData.OpenInterest[i] : 0,
+                            OpenInterest = historicalData.OpenInterest.Count > i ? (long)historicalData.OpenInterest[i] : 0,
                             Vwap = (historicalData.High[i] + historicalData.Low[i] + historicalData.Close[i]) / 3
                         };
                         candles.Add(candle);
+                    }
+
+                    if (candles.Any())
+                    {
+                        Debug.WriteLine($"[DEBUG_BACKFILL] First parsed candle: {candles.First()}");
+                        Debug.WriteLine($"[DEBUG_BACKFILL] Last parsed candle: {candles.Last()}");
                     }
 
                     foreach (var timeframe in _timeframes)
                     {
                         var aggregatedCandles = AggregateHistoricalCandles(candles, timeframe);
                         _multiTimeframeCandles[instrument.SecurityId][timeframe] = aggregatedCandles;
+                        Debug.WriteLine($"[DEBUG_BACKFILL] Aggregated {aggregatedCandles.Count} candles for {timeframe.TotalMinutes} min timeframe for {instrument.DisplayName}.");
                     }
                     Debug.WriteLine($"[Backfill] Successfully backfilled and aggregated candles for {instrument.DisplayName}.");
+                }
+                else
+                {
+                    Debug.WriteLine($"[DEBUG_BACKFILL] No historical data points returned from API for {instrument.DisplayName}. The response might be empty.");
                 }
             }
             catch (DhanApiException ex)
             {
-                Debug.WriteLine($"[Backfill] Failed for {instrument.DisplayName}: {ex.Message}");
+                Debug.WriteLine($"[Backfill] API FAILED for {instrument.DisplayName}: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[DEBUG_BACKFILL] UNEXPECTED ERROR during backfill for {instrument.DisplayName}: {ex.Message}");
             }
         }
+
 
         private List<Candle> AggregateHistoricalCandles(List<Candle> minuteCandles, TimeSpan timeframe)
         {
