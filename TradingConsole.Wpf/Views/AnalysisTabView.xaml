@@ -76,7 +76,7 @@
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Symbol" Binding="{Binding Symbol}" Width="200"/>
 
-                <DataGridTemplateColumn Header="1m Candle" Width="180">
+                <DataGridTemplateColumn Header="1m Candle" Width="210">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding CandleSignal1Min}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -99,7 +99,7 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTemplateColumn Header="5m Candle" Width="180">
+                <DataGridTemplateColumn Header="5m Candle" Width="210">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding CandleSignal5Min}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -263,6 +263,34 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
+                <!-- NEW: ATR Columns Added Here -->
+                <DataGridTextColumn Header="5m ATR" Binding="{Binding Atr5Min, StringFormat=N2}" Width="80"/>
+                <DataGridTemplateColumn Header="5m ATR Signal" Width="140">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding AtrSignal5Min}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding AtrSignal5Min}" Value="Vol Expanding">
+                                                <Setter Property="Foreground" Value="Green"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding AtrSignal5Min}" Value="Vol Contracting">
+                                                <Setter Property="Foreground" Value="OrangeRed"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding AtrSignal5Min}" Value="High Vol">
+                                                <Setter Property="Foreground" Value="DarkGreen"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding AtrSignal5Min}" Value="Low Vol">
+                                                <Setter Property="Foreground" Value="Gray"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
 
                 <DataGridTextColumn Header="1 Min EMA" Binding="{Binding EmaSignal1Min}" Width="110" IsReadOnly="True">
                     <DataGridTextColumn.ElementStyle>
@@ -312,6 +340,49 @@
                         </Style>
                     </DataGridTextColumn.ElementStyle>
                 </DataGridTextColumn>
+                <!-- NEW: RSI Columns Added Here -->
+                <DataGridTextColumn Header="1m RSI" Binding="{Binding RsiValue1Min, StringFormat=N2}" Width="80"/>
+                <DataGridTemplateColumn Header="1m RSI Signal" Width="150">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding RsiSignal1Min}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RsiSignal1Min, Converter={StaticResource ValueToSignConverter}, ConverterParameter=ContainsBullish}">
+                                                <Setter Property="Foreground" Value="DarkGreen"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding RsiSignal1Min, Converter={StaticResource ValueToSignConverter}, ConverterParameter=ContainsBearish}">
+                                                <Setter Property="Foreground" Value="DarkRed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="5m RSI" Binding="{Binding RsiValue5Min, StringFormat=N2}" Width="80"/>
+                <DataGridTemplateColumn Header="5m RSI Signal" Width="150">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding RsiSignal5Min}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RsiSignal5Min, Converter={StaticResource ValueToSignConverter}, ConverterParameter=ContainsBullish}">
+                                                <Setter Property="Foreground" Value="DarkGreen"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding RsiSignal5Min, Converter={StaticResource ValueToSignConverter}, ConverterParameter=ContainsBearish}">
+                                                <Setter Property="Foreground" Value="DarkRed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
 
                 <!-- NEW: VWAP EMA Columns -->
                 <DataGridTextColumn Header="1m VWAP EMA" Binding="{Binding VwapEmaSignal1Min}" Width="120" IsReadOnly="True">

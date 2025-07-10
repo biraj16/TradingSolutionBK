@@ -83,6 +83,9 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <!-- NEW: Added rows for ATR settings -->
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
@@ -104,6 +107,15 @@
 
                         <TextBlock Grid.Row="6" Grid.Column="0" Text="Long EMA:" Margin="5"/>
                         <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding LongEmaLength, UpdateSourceTrigger=PropertyChanged}" Width="100" HorizontalAlignment="Left"/>
+
+                        <!-- NEW: Added ATR Settings Section -->
+                        <TextBlock Grid.Row="7" Grid.ColumnSpan="2" Text="Volatility (ATR) Settings" FontWeight="Bold" FontSize="14" Margin="5,15,5,5"/>
+                        <TextBlock Grid.Row="8" Grid.Column="0" Text="ATR Period:" Margin="5"/>
+                        <TextBox Grid.Row="8" Grid.Column="1" Text="{Binding AtrPeriod, UpdateSourceTrigger=PropertyChanged}" Width="100" HorizontalAlignment="Left"/>
+
+                        <TextBlock Grid.Row="9" Grid.Column="0" Text="ATR SMA Period:" Margin="5"/>
+                        <TextBox Grid.Row="9" Grid.Column="1" Text="{Binding AtrSmaPeriod, UpdateSourceTrigger=PropertyChanged}" Width="100" HorizontalAlignment="Left"/>
+
                     </Grid>
                 </StackPanel>
             </GroupBox>

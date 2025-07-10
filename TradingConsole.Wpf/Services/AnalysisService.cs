@@ -40,6 +40,19 @@ namespace TradingConsole.Wpf.Services
         public decimal CurrentLongEma { get; set; }
     }
 
+    public class RsiState
+    {
+        public decimal AvgGain { get; set; }
+        public decimal AvgLoss { get; set; }
+        public List<decimal> RsiValues { get; } = new List<decimal>();
+    }
+
+    public class AtrState
+    {
+        public decimal CurrentAtr { get; set; }
+        public List<decimal> AtrValues { get; } = new List<decimal>();
+    }
+
     internal enum PriceZone { Inside, Above, Below }
     internal class CustomLevelState
     {
@@ -75,6 +88,21 @@ namespace TradingConsole.Wpf.Services
         private string _customLevelSignal = "N/A";
         private string _candleSignal1Min = "N/A";
         private string _candleSignal5Min = "N/A";
+
+        private decimal _rsiValue1Min;
+        public decimal RsiValue1Min { get => _rsiValue1Min; set { if (_rsiValue1Min != value) { _rsiValue1Min = value; OnPropertyChanged(); } } }
+        private string _rsiSignal1Min = "N/A";
+        public string RsiSignal1Min { get => _rsiSignal1Min; set { if (_rsiSignal1Min != value) { _rsiSignal1Min = value; OnPropertyChanged(); } } }
+        private decimal _rsiValue5Min;
+        public decimal RsiValue5Min { get => _rsiValue5Min; set { if (_rsiValue5Min != value) { _rsiValue5Min = value; OnPropertyChanged(); } } }
+        private string _rsiSignal5Min = "N/A";
+        public string RsiSignal5Min { get => _rsiSignal5Min; set { if (_rsiSignal5Min != value) { _rsiSignal5Min = value; OnPropertyChanged(); } } }
+
+        private decimal _atr5Min;
+        public decimal Atr5Min { get => _atr5Min; set { if (_atr5Min != value) { _atr5Min = value; OnPropertyChanged(); } } }
+        private string _atrSignal5Min = "N/A";
+        public string AtrSignal5Min { get => _atrSignal5Min; set { if (_atrSignal5Min != value) { _atrSignal5Min = value; OnPropertyChanged(); } } }
+
 
         public string CandleSignal1Min { get => _candleSignal1Min; set { if (_candleSignal1Min != value) { _candleSignal1Min = value; OnPropertyChanged(); } } }
         public string CandleSignal5Min { get => _candleSignal5Min; set { if (_candleSignal5Min != value) { _candleSignal5Min = value; OnPropertyChanged(); } } }
@@ -137,12 +165,15 @@ namespace TradingConsole.Wpf.Services
 
         public int ShortEmaLength { get; set; } = 9;
         public int LongEmaLength { get; set; } = 21;
+        // --- NEW: Public properties for configurable ATR periods ---
+        public int AtrPeriod { get; set; } = 14;
+        public int AtrSmaPeriod { get; set; } = 10;
         private readonly int _ivHistoryLength = 15;
         private readonly decimal _ivSpikeThreshold = 0.01m;
         private readonly int _volumeHistoryLength = 12;
         private readonly double _volumeBurstMultiplier = 2.0;
         private const int MinIvHistoryForSignal = 2;
-        private const int MaxCandlesToStore = 30;
+        private const int MaxCandlesToStore = 200;
         private readonly List<TimeSpan> _timeframes = new()
         {
             TimeSpan.FromMinutes(1),
@@ -153,7 +184,11 @@ namespace TradingConsole.Wpf.Services
         private readonly Dictionary<string, Dictionary<TimeSpan, List<Candle>>> _multiTimeframeCandles = new();
         private readonly Dictionary<string, Dictionary<TimeSpan, EmaState>> _multiTimeframePriceEmaState = new();
         private readonly Dictionary<string, Dictionary<TimeSpan, EmaState>> _multiTimeframeVwapEmaState = new();
+        private readonly Dictionary<string, Dictionary<TimeSpan, RsiState>> _multiTimeframeRsiState = new();
+        private readonly Dictionary<string, Dictionary<TimeSpan, AtrState>> _multiTimeframeAtrState = new();
         public event Action<AnalysisResult>? OnAnalysisUpdated;
+
+        public event Action<string, Candle, TimeSpan>? CandleUpdated;
         #endregion
 
         public AnalysisService(SettingsViewModel settingsViewModel, DhanApiClient apiClient, ScripMasterService scripMasterService)
@@ -161,6 +196,16 @@ namespace TradingConsole.Wpf.Services
             _settingsViewModel = settingsViewModel;
             _apiClient = apiClient;
             _scripMasterService = scripMasterService;
+        }
+
+        public List<Candle>? GetCandles(string securityId, TimeSpan timeframe)
+        {
+            if (_multiTimeframeCandles.TryGetValue(securityId, out var timeframes) &&
+                timeframes.TryGetValue(timeframe, out var candles))
+            {
+                return candles;
+            }
+            return null;
         }
 
         public async void OnInstrumentDataReceived(DashboardInstrument instrument)
@@ -174,12 +219,16 @@ namespace TradingConsole.Wpf.Services
                 _multiTimeframeCandles[instrument.SecurityId] = new Dictionary<TimeSpan, List<Candle>>();
                 _multiTimeframePriceEmaState[instrument.SecurityId] = new Dictionary<TimeSpan, EmaState>();
                 _multiTimeframeVwapEmaState[instrument.SecurityId] = new Dictionary<TimeSpan, EmaState>();
+                _multiTimeframeRsiState[instrument.SecurityId] = new Dictionary<TimeSpan, RsiState>();
+                _multiTimeframeAtrState[instrument.SecurityId] = new Dictionary<TimeSpan, AtrState>();
 
                 foreach (var tf in _timeframes)
                 {
                     _multiTimeframeCandles[instrument.SecurityId][tf] = new List<Candle>();
                     _multiTimeframePriceEmaState[instrument.SecurityId][tf] = new EmaState();
                     _multiTimeframeVwapEmaState[instrument.SecurityId][tf] = new EmaState();
+                    _multiTimeframeRsiState[instrument.SecurityId][tf] = new RsiState();
+                    _multiTimeframeAtrState[instrument.SecurityId][tf] = new AtrState();
                 }
 
                 if (instrument.SegmentId == 0)
@@ -217,7 +266,6 @@ namespace TradingConsole.Wpf.Services
                 if (historicalData?.Open != null && historicalData.StartTime != null && historicalData.Open.Any())
                 {
                     Debug.WriteLine($"[DEBUG_BACKFILL] SUCCESS: Received {historicalData.Open.Count} historical data points for {instrument.DisplayName}.");
-                    Debug.WriteLine($"[DEBUG_BACKFILL] StartTime count: {historicalData.StartTime.Count}, Open count: {historicalData.Open.Count}, Close count: {historicalData.Close.Count}.");
 
                     var candles = new List<Candle>();
                     for (int i = 0; i < historicalData.Open.Count; i++)
@@ -228,7 +276,6 @@ namespace TradingConsole.Wpf.Services
                             break;
                         }
 
-                        // --- FIX: Safely cast the decimal values from the API to the expected types ---
                         var candle = new Candle
                         {
                             Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)historicalData.StartTime[i]).UtcDateTime,
@@ -241,12 +288,6 @@ namespace TradingConsole.Wpf.Services
                             Vwap = (historicalData.High[i] + historicalData.Low[i] + historicalData.Close[i]) / 3
                         };
                         candles.Add(candle);
-                    }
-
-                    if (candles.Any())
-                    {
-                        Debug.WriteLine($"[DEBUG_BACKFILL] First parsed candle: {candles.First()}");
-                        Debug.WriteLine($"[DEBUG_BACKFILL] Last parsed candle: {candles.Last()}");
                     }
 
                     foreach (var timeframe in _timeframes)
@@ -303,10 +344,11 @@ namespace TradingConsole.Wpf.Services
             var candleTimestamp = new DateTime(now.Ticks - (now.Ticks % timeframe.Ticks), now.Kind);
 
             var currentCandle = candles.LastOrDefault();
+            Candle? candleToNotify = null;
 
             if (currentCandle == null || currentCandle.Timestamp != candleTimestamp)
             {
-                candles.Add(new Candle
+                var newCandle = new Candle
                 {
                     Timestamp = candleTimestamp,
                     Open = instrument.LTP,
@@ -318,7 +360,9 @@ namespace TradingConsole.Wpf.Services
                     CumulativePriceVolume = instrument.AvgTradePrice * instrument.LastTradedQuantity,
                     CumulativeVolume = instrument.LastTradedQuantity,
                     Vwap = instrument.AvgTradePrice
-                });
+                };
+                candles.Add(newCandle);
+                candleToNotify = newCandle;
 
                 if (candles.Count > MaxCandlesToStore)
                 {
@@ -337,6 +381,12 @@ namespace TradingConsole.Wpf.Services
                 currentCandle.Vwap = (currentCandle.CumulativeVolume > 0)
                     ? currentCandle.CumulativePriceVolume / currentCandle.CumulativeVolume
                     : currentCandle.Close;
+                candleToNotify = currentCandle;
+            }
+
+            if (candleToNotify != null)
+            {
+                CandleUpdated?.Invoke(instrument.SecurityId, candleToNotify, timeframe);
             }
         }
 
@@ -359,6 +409,23 @@ namespace TradingConsole.Wpf.Services
 
             _tickAnalysisState[instrument.SecurityId] = tickState;
 
+            var oneMinCandles = _multiTimeframeCandles[instrument.SecurityId].GetValueOrDefault(TimeSpan.FromMinutes(1));
+            var fiveMinCandles = _multiTimeframeCandles[instrument.SecurityId].GetValueOrDefault(TimeSpan.FromMinutes(5));
+
+            if (oneMinCandles != null)
+            {
+                result.RsiValue1Min = CalculateRsi(oneMinCandles, _multiTimeframeRsiState[instrument.SecurityId][TimeSpan.FromMinutes(1)]);
+                result.RsiSignal1Min = DetectRsiDivergence(oneMinCandles, _multiTimeframeRsiState[instrument.SecurityId][TimeSpan.FromMinutes(1)]);
+            }
+            if (fiveMinCandles != null)
+            {
+                result.RsiValue5Min = CalculateRsi(fiveMinCandles, _multiTimeframeRsiState[instrument.SecurityId][TimeSpan.FromMinutes(5)]);
+                result.RsiSignal5Min = DetectRsiDivergence(fiveMinCandles, _multiTimeframeRsiState[instrument.SecurityId][TimeSpan.FromMinutes(5)]);
+
+                result.Atr5Min = CalculateAtr(fiveMinCandles, _multiTimeframeAtrState[instrument.SecurityId][TimeSpan.FromMinutes(5)], this.AtrPeriod);
+                result.AtrSignal5Min = GetAtrSignal(result.Atr5Min, _multiTimeframeAtrState[instrument.SecurityId][TimeSpan.FromMinutes(5)], this.AtrSmaPeriod);
+            }
+
             var priceEmaSignals = new Dictionary<TimeSpan, string>();
             var vwapEmaSignals = new Dictionary<TimeSpan, string>();
             foreach (var timeframe in _timeframes)
@@ -368,8 +435,6 @@ namespace TradingConsole.Wpf.Services
                 priceEmaSignals[timeframe] = CalculateEmaSignal(instrument.SecurityId, candles, _multiTimeframePriceEmaState, useVwap: false);
                 vwapEmaSignals[timeframe] = CalculateEmaSignal(instrument.SecurityId, candles, _multiTimeframeVwapEmaState, useVwap: true);
             }
-
-            var oneMinCandles = _multiTimeframeCandles[instrument.SecurityId].GetValueOrDefault(TimeSpan.FromMinutes(1));
 
             var (volumeSignal, currentCandleVolume, avgCandleVolume) = ("Neutral", 0L, 0L);
             if (oneMinCandles != null && oneMinCandles.Any())
@@ -390,7 +455,6 @@ namespace TradingConsole.Wpf.Services
             if (oneMinCandles != null) candleSignal1Min = RecognizeCandlestickPattern(oneMinCandles);
 
             string candleSignal5Min = "N/A";
-            var fiveMinCandles = _multiTimeframeCandles[instrument.SecurityId].GetValueOrDefault(TimeSpan.FromMinutes(5));
             if (fiveMinCandles != null) candleSignal5Min = RecognizeCandlestickPattern(fiveMinCandles);
 
             result.Symbol = instrument.DisplayName;
@@ -520,6 +584,159 @@ namespace TradingConsole.Wpf.Services
 
             return "Neutral";
         }
+
+        private decimal CalculateRsi(List<Candle> candles, RsiState state, int period = 14)
+        {
+            if (candles.Count <= period) return 0m;
+
+            var lastCandle = candles.Last();
+            var secondLastCandle = candles[candles.Count - 2];
+            var change = lastCandle.Close - secondLastCandle.Close;
+            var gain = Math.Max(0, change);
+            var loss = Math.Max(0, -change);
+
+            if (state.AvgGain == 0)
+            {
+                var initialChanges = candles.Skip(1).Select((c, i) => c.Close - candles[i].Close).ToList();
+                state.AvgGain = initialChanges.Take(period).Where(ch => ch > 0).DefaultIfEmpty(0).Average();
+                state.AvgLoss = initialChanges.Take(period).Where(ch => ch < 0).Select(ch => -ch).DefaultIfEmpty(0).Average();
+            }
+            else
+            {
+                state.AvgGain = ((state.AvgGain * (period - 1)) + gain) / period;
+                state.AvgLoss = ((state.AvgLoss * (period - 1)) + loss) / period;
+            }
+
+            if (state.AvgLoss == 0) return 100m;
+
+            var rs = state.AvgGain / state.AvgLoss;
+            var rsi = 100 - (100 / (1 + rs));
+
+            state.RsiValues.Add(rsi);
+            if (state.RsiValues.Count > 50) state.RsiValues.RemoveAt(0);
+
+            return Math.Round(rsi, 2);
+        }
+
+        private string DetectRsiDivergence(List<Candle> candles, RsiState state, int lookback = 20, int swingWindow = 3)
+        {
+            if (candles.Count < lookback || state.RsiValues.Count < lookback) return "N/A";
+
+            var relevantCandles = candles.TakeLast(lookback).ToList();
+            var relevantRsi = state.RsiValues.TakeLast(lookback).ToList();
+
+            var swingHighs = FindSwingPoints(relevantCandles, relevantRsi, isHigh: true, swingWindow);
+            if (swingHighs.Count >= 2)
+            {
+                var high1 = swingHighs[0];
+                var high2 = swingHighs[1];
+                if (high1.price > high2.price && high1.indicator < high2.indicator)
+                {
+                    return "Bearish Divergence";
+                }
+            }
+
+            var swingLows = FindSwingPoints(relevantCandles, relevantRsi, isHigh: false, swingWindow);
+            if (swingLows.Count >= 2)
+            {
+                var low1 = swingLows[0];
+                var low2 = swingLows[1];
+                if (low1.price < low2.price && low1.indicator > low2.indicator)
+                {
+                    return "Bullish Divergence";
+                }
+            }
+
+            return "Neutral";
+        }
+
+        private List<(decimal price, decimal indicator)> FindSwingPoints(List<Candle> candles, List<decimal> indicatorValues, bool isHigh, int window)
+        {
+            var swingPoints = new List<(decimal price, decimal indicator)>();
+            for (int i = window; i < candles.Count - window; i++)
+            {
+                var currentPrice = isHigh ? candles[i].High : candles[i].Low;
+                bool isSwing = true;
+                for (int j = 1; j <= window; j++)
+                {
+                    var prevPrice = isHigh ? candles[i - j].High : candles[i - j].Low;
+                    var nextPrice = isHigh ? candles[i + j].High : candles[i + j].Low;
+                    if ((isHigh && (currentPrice < prevPrice || currentPrice < nextPrice)) ||
+                        (!isHigh && (currentPrice > prevPrice || currentPrice > nextPrice)))
+                    {
+                        isSwing = false;
+                        break;
+                    }
+                }
+                if (isSwing)
+                {
+                    swingPoints.Add((currentPrice, indicatorValues[i]));
+                }
+            }
+            return swingPoints.TakeLast(2).ToList();
+        }
+
+        private decimal CalculateAtr(List<Candle> candles, AtrState state, int period)
+        {
+            if (candles.Count < period) return 0m;
+
+            var trueRanges = new List<decimal>();
+            for (int i = 1; i < candles.Count; i++)
+            {
+                var high = candles[i].High;
+                var low = candles[i].Low;
+                var prevClose = candles[i - 1].Close;
+
+                var tr = Math.Max(high - low, Math.Abs(high - prevClose));
+                tr = Math.Max(tr, Math.Abs(low - prevClose));
+                trueRanges.Add(tr);
+            }
+
+            if (!trueRanges.Any()) return 0m;
+
+            if (state.CurrentAtr == 0)
+            {
+                state.CurrentAtr = trueRanges.Take(period).Average();
+            }
+            else
+            {
+                var lastTr = trueRanges.Last();
+                state.CurrentAtr = ((state.CurrentAtr * (period - 1)) + lastTr) / period;
+            }
+
+            state.AtrValues.Add(state.CurrentAtr);
+            if (state.AtrValues.Count > 20) state.AtrValues.RemoveAt(0);
+
+            return Math.Round(state.CurrentAtr, 2);
+        }
+
+        private string GetAtrSignal(decimal currentAtr, AtrState state, int smaPeriod)
+        {
+            if (state.AtrValues.Count < smaPeriod) return "N/A";
+
+            var smaOfAtr = state.AtrValues.TakeLast(smaPeriod).Average();
+            var previousAtr = state.AtrValues.Count > 1 ? state.AtrValues[^2] : 0;
+            var previousSmaOfAtr = state.AtrValues.Count > smaPeriod ? state.AtrValues.SkipLast(1).TakeLast(smaPeriod).Average() : 0;
+
+            bool wasBelow = previousAtr < previousSmaOfAtr;
+            bool isAbove = currentAtr > smaOfAtr;
+
+            if (isAbove && wasBelow)
+            {
+                return "Vol Expanding";
+            }
+
+            bool wasAbove = previousAtr > previousSmaOfAtr;
+            bool isBelow = currentAtr < smaOfAtr;
+
+            if (isBelow && wasAbove)
+            {
+                return "Vol Contracting";
+            }
+
+            return isAbove ? "High Vol" : "Low Vol";
+        }
+
 
         private (string priceVsVwap, string priceVsClose, string dayRange, string openDrive) CalculatePriceActionSignals(DashboardInstrument instrument, decimal vwap)
         {

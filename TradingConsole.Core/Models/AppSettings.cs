@@ -25,6 +25,9 @@ namespace TradingConsole.Core.Models
         public int ShortEmaLength { get; set; }
         public int LongEmaLength { get; set; }
 
+        public int AtrPeriod { get; set; }
+        public int AtrSmaPeriod { get; set; }
+
         // --- NEW: Dictionary to store custom levels for each index ---
         public Dictionary<string, IndexLevels> CustomIndexLevels { get; set; }
 
@@ -60,6 +63,9 @@ namespace TradingConsole.Core.Models
 
             ShortEmaLength = 9;
             LongEmaLength = 21;
+
+            AtrPeriod = 14;
+            AtrSmaPeriod = 10;
 
             // --- NEW: Initialize with default placeholder levels ---
             CustomIndexLevels = new Dictionary<string, IndexLevels>

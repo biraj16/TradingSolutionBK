@@ -37,8 +37,15 @@ namespace TradingConsole.Wpf.ViewModels
         public int LongEmaLength { get => _longEmaLength; set { if (_longEmaLength != value) { _longEmaLength = value; OnPropertyChanged(); } } }
         #endregion
 
-        #region NEW: Custom Index Levels
-        // --- NIFTY ---
+        #region NEW: Volatility (ATR) Settings
+        private int _atrPeriod;
+        public int AtrPeriod { get => _atrPeriod; set { if (_atrPeriod != value) { _atrPeriod = value; OnPropertyChanged(); } } }
+        private int _atrSmaPeriod;
+        public int AtrSmaPeriod { get => _atrSmaPeriod; set { if (_atrSmaPeriod != value) { _atrSmaPeriod = value; OnPropertyChanged(); } } }
+        #endregion
+
+        #region Custom Index Levels
+        // ... (existing index level properties are unchanged)
         private decimal _niftyNoTradeUpper;
         public decimal NiftyNoTradeUpper { get => _niftyNoTradeUpper; set { _niftyNoTradeUpper = value; OnPropertyChanged(); } }
         private decimal _niftyNoTradeLower;
@@ -50,7 +57,6 @@ namespace TradingConsole.Wpf.ViewModels
         private decimal _niftyThreshold;
         public decimal NiftyThreshold { get => _niftyThreshold; set { _niftyThreshold = value; OnPropertyChanged(); } }
 
-        // --- BANKNIFTY ---
         private decimal _bankniftyNoTradeUpper;
         public decimal BankniftyNoTradeUpper { get => _bankniftyNoTradeUpper; set { _bankniftyNoTradeUpper = value; OnPropertyChanged(); } }
         private decimal _bankniftyNoTradeLower;
@@ -62,7 +68,6 @@ namespace TradingConsole.Wpf.ViewModels
         private decimal _bankniftyThreshold;
         public decimal BankniftyThreshold { get => _bankniftyThreshold; set { _bankniftyThreshold = value; OnPropertyChanged(); } }
 
-        // --- SENSEX ---
         private decimal _sensexNoTradeUpper;
         public decimal SensexNoTradeUpper { get => _sensexNoTradeUpper; set { _sensexNoTradeUpper = value; OnPropertyChanged(); } }
         private decimal _sensexNoTradeLower;
@@ -97,6 +102,10 @@ namespace TradingConsole.Wpf.ViewModels
             ShortEmaLength = _settings.ShortEmaLength;
             LongEmaLength = _settings.LongEmaLength;
 
+            // --- NEW: Load ATR settings ---
+            AtrPeriod = _settings.AtrPeriod;
+            AtrSmaPeriod = _settings.AtrSmaPeriod;
+
             var niftyLevels = _settings.CustomIndexLevels.GetValueOrDefault("NIFTY", new IndexLevels());
             NiftyNoTradeUpper = niftyLevels.NoTradeUpperBand;
             NiftyNoTradeLower = niftyLevels.NoTradeLowerBand;
@@ -129,6 +138,10 @@ namespace TradingConsole.Wpf.ViewModels
             _settings.ShortEmaLength = ShortEmaLength;
             _settings.LongEmaLength = LongEmaLength;
 
+            // --- NEW: Save ATR settings ---
+            _settings.AtrPeriod = AtrPeriod;
+            _settings.AtrSmaPeriod = AtrSmaPeriod;
+
             _settings.CustomIndexLevels["NIFTY"] = new IndexLevels
             {
                 NoTradeUpperBand = NiftyNoTradeUpper,
@@ -159,7 +172,6 @@ namespace TradingConsole.Wpf.ViewModels
             SettingsSaved?.Invoke(this, EventArgs.Empty);
         }
 
-        // --- FIX: Corrected the logic to properly identify "Nifty Bank" ---
         public IndexLevels? GetLevelsForIndex(string indexSymbol)
         {
             if (string.IsNullOrEmpty(indexSymbol)) return null;
@@ -167,7 +179,6 @@ namespace TradingConsole.Wpf.ViewModels
             string key = indexSymbol.ToUpper();
             string settingsKey;
 
-            // Check for the more specific "BANKNIFTY" first to avoid ambiguity.
             if (key.Contains("BANK") && key.Contains("NIFTY"))
             {
                 settingsKey = "BANKNIFTY";
@@ -182,7 +193,7 @@ namespace TradingConsole.Wpf.ViewModels
             }
             else
             {
-                return null; // No matching index found
+                return null;
             }
 
             return _settings.CustomIndexLevels.GetValueOrDefault(settingsKey);

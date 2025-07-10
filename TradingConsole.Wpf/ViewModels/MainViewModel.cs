@@ -160,6 +160,8 @@ namespace TradingConsole.Wpf.ViewModels
             _analysisService = new AnalysisService(Settings, _apiClient, _scripMasterService);
             _analysisService.ShortEmaLength = Settings.ShortEmaLength;
             _analysisService.LongEmaLength = Settings.LongEmaLength;
+            _analysisService.AtrPeriod = Settings.AtrPeriod;
+            _analysisService.AtrSmaPeriod = Settings.AtrSmaPeriod;
             _analysisService.OnAnalysisUpdated += OnAnalysisResultUpdated;
 
             Dashboard = new DashboardViewModel();
@@ -204,6 +206,8 @@ namespace TradingConsole.Wpf.ViewModels
         {
             _analysisService.ShortEmaLength = Settings.ShortEmaLength;
             _analysisService.LongEmaLength = Settings.LongEmaLength;
+            _analysisService.AtrPeriod = Settings.AtrPeriod;
+            _analysisService.AtrSmaPeriod = Settings.AtrSmaPeriod;
         }
 
         private void OnAnalysisResultUpdated(AnalysisResult result)
