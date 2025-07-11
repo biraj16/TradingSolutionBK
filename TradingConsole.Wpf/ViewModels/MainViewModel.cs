@@ -13,10 +13,11 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using TradingConsole.Core.Models;
-using TradingConsole.Wpf.Services;
 using TradingConsole.DhanApi;
 using TradingConsole.DhanApi.Models;
 using TradingConsole.DhanApi.Models.WebSocket;
+using TradingConsole.Wpf.Services;
+using static TradingConsole.Wpf.Services.IntradayIvState;
 using TickerIndex = TradingConsole.DhanApi.Models.Index;
 
 
@@ -111,7 +112,7 @@ namespace TradingConsole.Wpf.ViewModels
         private decimal _underlyingPrice;
         public decimal UnderlyingPrice { get => _underlyingPrice; set { if (_underlyingPrice != value) { _underlyingPrice = value; OnPropertyChanged(); OnPropertyChanged(nameof(UnderlyingPriceChange)); OnPropertyChanged(nameof(UnderlyingPriceChangePercent)); } } }
         private decimal _underlyingPreviousClose;
-        public decimal UnderlyingPreviousClose { get => _underlyingPreviousClose; set { if (_underlyingPreviousClose != value) { _underlyingPreviousClose = value; OnPropertyChanged(); OnPropertyChanged(nameof(UnderlyingPriceChange)); OnPropertyChanged(nameof(UnderlyingPriceChangePercent)); } } }
+        public decimal UnderlyingPreviousClose { get => _underlyingPreviousClose; set { if (_underlyingPreviousClose != value) { _underlyingPreviousClose = value; OnPropertyChanged(nameof(UnderlyingPriceChange)); OnPropertyChanged(nameof(UnderlyingPriceChangePercent)); } } }
         public decimal UnderlyingPriceChange => UnderlyingPrice - UnderlyingPreviousClose;
         public decimal UnderlyingPriceChangePercent => UnderlyingPreviousClose == 0 ? 0 : (UnderlyingPriceChange / UnderlyingPreviousClose);
 
@@ -816,7 +817,8 @@ namespace TradingConsole.Wpf.ViewModels
             {
                 if (string.IsNullOrEmpty(packet.SecurityId)) return;
 
-                if (_dashboardInstrumentMap.TryGetValue(packet.SecurityId, out var instrumentToUpdate))
+                DashboardInstrument? instrumentToUpdate = null;
+                if (_dashboardInstrumentMap.TryGetValue(packet.SecurityId, out instrumentToUpdate))
                 {
                     instrumentToUpdate.LTP = packet.LastPrice;
                     instrumentToUpdate.Open = packet.Open;
@@ -833,7 +835,18 @@ namespace TradingConsole.Wpf.ViewModels
                         instrumentToUpdate.ImpliedVolatility = cachedOptionData.ImpliedVolatility;
                     }
 
-                    _analysisService.OnInstrumentDataReceived(instrumentToUpdate);
+                    // --- FIX: Pass the correct underlying price to the analysis service ---
+                    decimal underlyingLtp = this.UnderlyingPrice; // Default to the main selected index price
+                    if (!string.IsNullOrEmpty(instrumentToUpdate.UnderlyingSymbol))
+                    {
+                        // Find the underlying instrument in the dashboard to get its live price
+                        var underlyingInstrument = Dashboard.MonitoredInstruments.FirstOrDefault(i => i.Symbol == instrumentToUpdate.UnderlyingSymbol || i.DisplayName == instrumentToUpdate.UnderlyingSymbol);
+                        if (underlyingInstrument != null && underlyingInstrument.LTP > 0)
+                        {
+                            underlyingLtp = underlyingInstrument.LTP;
+                        }
+                    }
+                    _analysisService.OnInstrumentDataReceived(instrumentToUpdate, underlyingLtp);
                 }
 
                 if (SelectedIndex != null && SelectedIndex.ScripId == packet.SecurityId)
@@ -859,6 +872,7 @@ namespace TradingConsole.Wpf.ViewModels
                 }
             });
         }
+
 
         private void OnOiUpdateReceived(OiPacket packet)
         {
@@ -1273,7 +1287,26 @@ namespace TradingConsole.Wpf.ViewModels
                         if (_optionChainCache.TryGetValue(instrument.SecurityId, out var cachedData))
                         {
                             instrument.ImpliedVolatility = cachedData.ImpliedVolatility;
-                            _analysisService.OnInstrumentDataReceived(instrument);
+
+                            // --- FIX: Pass the correct underlying price to the analysis service ---
+                            decimal underlyingLtp = 0;
+                            if (!string.IsNullOrEmpty(instrument.UnderlyingSymbol))
+                            {
+                                var underlyingInstrument = Dashboard.MonitoredInstruments.FirstOrDefault(i => i.Symbol == instrument.UnderlyingSymbol || i.DisplayName == instrument.UnderlyingSymbol);
+                                if (underlyingInstrument != null)
+                                {
+                                    underlyingLtp = underlyingInstrument.LTP;
+                                }
+                            }
+
+                            if (instrument.InstrumentType.StartsWith("OPT") && underlyingLtp > 0)
+                            {
+                                _analysisService.OnInstrumentDataReceived(instrument, underlyingLtp);
+                            }
+                            else if (!instrument.InstrumentType.StartsWith("OPT"))
+                            {
+                                _analysisService.OnInstrumentDataReceived(instrument, instrument.LTP);
+                            }
                         }
                     }
                 });

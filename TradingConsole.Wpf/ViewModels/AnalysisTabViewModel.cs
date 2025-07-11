@@ -1,8 +1,8 @@
-﻿using System.Collections.ObjectModel;
+﻿// In TradingConsole.Wpf/ViewModels/AnalysisTabViewModel.cs
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using TradingConsole.Wpf.Services;
 
 namespace TradingConsole.Wpf.ViewModels
 {
@@ -41,7 +41,6 @@ namespace TradingConsole.Wpf.ViewModels
                 existingResult.EmaSignal5Min = newResult.EmaSignal5Min;
                 existingResult.EmaSignal15Min = newResult.EmaSignal15Min;
 
-                // --- FIX: Update the new price action signals ---
                 existingResult.PriceVsVwapSignal = newResult.PriceVsVwapSignal;
                 existingResult.PriceVsCloseSignal = newResult.PriceVsCloseSignal;
                 existingResult.DayRangeSignal = newResult.DayRangeSignal;
