@@ -40,6 +40,7 @@ namespace TradingConsole.Wpf.ViewModels
         private readonly DhanWebSocketClient _webSocketClient;
         private readonly ScripMasterService _scripMasterService;
         private readonly AnalysisService _analysisService;
+        private readonly HistoricalIvService _historicalIvService;
         private readonly string _dhanClientId;
         private Timer? _optionChainRefreshTimer;
         private Timer? _ivRefreshTimer;
@@ -152,12 +153,13 @@ namespace TradingConsole.Wpf.ViewModels
             _apiClient = new DhanApiClient(clientId, accessToken);
             _webSocketClient = new DhanWebSocketClient(clientId, accessToken);
             _scripMasterService = new ScripMasterService();
+            _historicalIvService = new HistoricalIvService();
 
             var settingsService = new SettingsService();
             Settings = new SettingsViewModel(settingsService);
             Settings.SettingsSaved += Settings_SettingsSaved;
 
-            _analysisService = new AnalysisService(Settings, _apiClient, _scripMasterService);
+            _analysisService = new AnalysisService(Settings, _apiClient, _scripMasterService, _historicalIvService);
             _analysisService.ShortEmaLength = Settings.ShortEmaLength;
             _analysisService.LongEmaLength = Settings.LongEmaLength;
             _analysisService.AtrPeriod = Settings.AtrPeriod;
@@ -1468,6 +1470,7 @@ namespace TradingConsole.Wpf.ViewModels
             _ivCacheSemaphore?.Dispose();
 
             Settings.SettingsSaved -= Settings_SettingsSaved;
+            _historicalIvService?.SaveDatabase();
         }
         #endregion
     }

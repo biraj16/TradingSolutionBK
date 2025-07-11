@@ -1,4 +1,5 @@
-﻿using System;
+﻿//tell me where changes are needed in this file?
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -53,6 +54,13 @@ namespace TradingConsole.Wpf.Services
         public List<decimal> AtrValues { get; } = new List<decimal>();
     }
 
+    public class IntradayIvState
+    {
+        public decimal DayHighIv { get; set; } = 0;
+        public decimal DayLowIv { get; set; } = decimal.MaxValue;
+        public List<decimal> IvPercentileHistory { get; } = new List<decimal>();
+    }
+
     internal enum PriceZone { Inside, Above, Below }
     internal class CustomLevelState
     {
@@ -66,9 +74,6 @@ namespace TradingConsole.Wpf.Services
         private string _securityId = string.Empty;
         private string _symbol = string.Empty;
         private decimal _vwap;
-        private decimal _currentIv;
-        private decimal _avgIv;
-        private string _ivSignal = "Neutral";
         private long _currentVolume;
         private long _avgVolume;
         private string _volumeSignal = "Neutral";
@@ -103,6 +108,15 @@ namespace TradingConsole.Wpf.Services
         private string _atrSignal5Min = "N/A";
         public string AtrSignal5Min { get => _atrSignal5Min; set { if (_atrSignal5Min != value) { _atrSignal5Min = value; OnPropertyChanged(); } } }
 
+        // --- NEW: Properties for the advanced IV signals ---
+        private decimal _ivRank;
+        public decimal IvRank { get => _ivRank; set { if (_ivRank != value) { _ivRank = value; OnPropertyChanged(); } } }
+        private decimal _ivPercentile;
+        public decimal IvPercentile { get => _ivPercentile; set { if (_ivPercentile != value) { _ivPercentile = value; OnPropertyChanged(); } } }
+        private string _ivTrendSignal = "N/A";
+        public string IvTrendSignal { get => _ivTrendSignal; set { if (_ivTrendSignal != value) { _ivTrendSignal = value; OnPropertyChanged(); } } }
+
+
 
         public string CandleSignal1Min { get => _candleSignal1Min; set { if (_candleSignal1Min != value) { _candleSignal1Min = value; OnPropertyChanged(); } } }
         public string CandleSignal5Min { get => _candleSignal5Min; set { if (_candleSignal5Min != value) { _candleSignal5Min = value; OnPropertyChanged(); } } }
@@ -110,9 +124,6 @@ namespace TradingConsole.Wpf.Services
         public string SecurityId { get => _securityId; set { _securityId = value; OnPropertyChanged(); } }
         public string Symbol { get => _symbol; set { _symbol = value; OnPropertyChanged(); } }
         public decimal Vwap { get => _vwap; set { if (_vwap != value) { _vwap = value; OnPropertyChanged(); } } }
-        public decimal CurrentIv { get => _currentIv; set { if (_currentIv != value) { _currentIv = value; OnPropertyChanged(); } } }
-        public decimal AvgIv { get => _avgIv; set { if (_avgIv != value) { _avgIv = value; OnPropertyChanged(); } } }
-        public string IvSignal { get => _ivSignal; set { if (_ivSignal != value) { _ivSignal = value; OnPropertyChanged(); } } }
         public long CurrentVolume { get => _currentVolume; set { if (_currentVolume != value) { _currentVolume = value; OnPropertyChanged(); } } }
         public long AvgVolume { get => _avgVolume; set { if (_avgVolume != value) { _avgVolume = value; OnPropertyChanged(); } } }
         public string VolumeSignal { get => _volumeSignal; set { if (_volumeSignal != value) { _volumeSignal = value; OnPropertyChanged(); } } }
@@ -159,6 +170,7 @@ namespace TradingConsole.Wpf.Services
         private readonly SettingsViewModel _settingsViewModel;
         private readonly DhanApiClient _apiClient;
         private readonly ScripMasterService _scripMasterService;
+        private readonly HistoricalIvService _historicalIvService;
         private readonly Dictionary<string, CustomLevelState> _customLevelStates = new();
         private readonly HashSet<string> _backfilledInstruments = new HashSet<string>();
         private readonly Dictionary<string, AnalysisResult> _analysisResults = new();
@@ -175,27 +187,30 @@ namespace TradingConsole.Wpf.Services
         private const int MinIvHistoryForSignal = 2;
         private const int MaxCandlesToStore = 200;
         private readonly List<TimeSpan> _timeframes = new()
-        {
-            TimeSpan.FromMinutes(1),
-            TimeSpan.FromMinutes(5),
-            TimeSpan.FromMinutes(15)
-        };
+    {
+        TimeSpan.FromMinutes(1),
+        TimeSpan.FromMinutes(5),
+        TimeSpan.FromMinutes(15)
+    };
         private readonly Dictionary<string, (decimal cumulativePriceVolume, long cumulativeVolume, List<decimal> ivHistory)> _tickAnalysisState = new();
         private readonly Dictionary<string, Dictionary<TimeSpan, List<Candle>>> _multiTimeframeCandles = new();
         private readonly Dictionary<string, Dictionary<TimeSpan, EmaState>> _multiTimeframePriceEmaState = new();
         private readonly Dictionary<string, Dictionary<TimeSpan, EmaState>> _multiTimeframeVwapEmaState = new();
         private readonly Dictionary<string, Dictionary<TimeSpan, RsiState>> _multiTimeframeRsiState = new();
         private readonly Dictionary<string, Dictionary<TimeSpan, AtrState>> _multiTimeframeAtrState = new();
+        private readonly Dictionary<string, IntradayIvState> _intradayIvStates = new Dictionary<string, IntradayIvState>();
+
         public event Action<AnalysisResult>? OnAnalysisUpdated;
 
         public event Action<string, Candle, TimeSpan>? CandleUpdated;
         #endregion
 
-        public AnalysisService(SettingsViewModel settingsViewModel, DhanApiClient apiClient, ScripMasterService scripMasterService)
+        public AnalysisService(SettingsViewModel settingsViewModel, DhanApiClient apiClient, ScripMasterService scripMasterService, HistoricalIvService historicalIvService)
         {
             _settingsViewModel = settingsViewModel;
             _apiClient = apiClient;
             _scripMasterService = scripMasterService;
+            _historicalIvService = historicalIvService;
         }
 
         public List<Candle>? GetCandles(string securityId, TimeSpan timeframe)
@@ -208,9 +223,42 @@ namespace TradingConsole.Wpf.Services
             return null;
         }
 
-        public async void OnInstrumentDataReceived(DashboardInstrument instrument)
+        public async void OnInstrumentDataReceived(DashboardInstrument instrument, decimal underlyingPrice)
         {
             if (string.IsNullOrEmpty(instrument.SecurityId)) return;
+
+            // --- NEW: Advanced IV Analysis Logic ---
+            if (instrument.InstrumentType.StartsWith("OPT") && instrument.ImpliedVolatility > 0)
+            {
+                var ivKey = GetHistoricalIvKey(instrument, underlyingPrice);
+                if (!string.IsNullOrEmpty(ivKey))
+                {
+                    if (!_intradayIvStates.ContainsKey(ivKey))
+                    {
+                        _intradayIvStates[ivKey] = new IntradayIvState();
+                    }
+                    var ivState = _intradayIvStates[ivKey];
+
+                    // Update Day's High/Low
+                    ivState.DayHighIv = Math.Max(ivState.DayHighIv, instrument.ImpliedVolatility);
+                    ivState.DayLowIv = Math.Min(ivState.DayLowIv, instrument.ImpliedVolatility);
+
+                    // Record for saving at end of day
+                    _historicalIvService.RecordDailyIv(ivKey, ivState.DayHighIv, ivState.DayLowIv);
+
+                    // Calculate IVP and IVR
+                    var (ivRank, ivPercentile) = CalculateIvRankAndPercentile(instrument.ImpliedVolatility, ivKey, ivState);
+                    var ivTrendSignal = GetIvTrendSignal(ivPercentile, ivRank, ivState);
+
+                    // Find the analysis result and update it
+                    if (_analysisResults.TryGetValue(instrument.SecurityId, out var existingResult))
+                    {
+                        existingResult.IvRank = ivRank;
+                        existingResult.IvPercentile = ivPercentile;
+                        existingResult.IvTrendSignal = ivTrendSignal;
+                    }
+                }
+            }
 
             bool isNewInstrument = !_backfilledInstruments.Contains(instrument.SecurityId);
             if (isNewInstrument)
@@ -245,6 +293,68 @@ namespace TradingConsole.Wpf.Services
             }
 
             RunComplexAnalysis(instrument);
+        }
+        private string GetHistoricalIvKey(DashboardInstrument instrument, decimal underlyingPrice)
+        {
+            if (string.IsNullOrEmpty(instrument.UnderlyingSymbol)) return string.Empty;
+
+            var scripInfo = _scripMasterService.FindBySecurityId(instrument.SecurityId);
+            if (scripInfo == null || scripInfo.StrikePrice <= 0) return string.Empty;
+
+            int strikeDistance = (int)Math.Round((scripInfo.StrikePrice - underlyingPrice) / 50);
+            string moneyness;
+            if (strikeDistance == 0) moneyness = "ATM";
+            else if (strikeDistance > 0) moneyness = $"ATM+{strikeDistance}";
+            else moneyness = $"ATM{strikeDistance}";
+
+            return $"{instrument.UnderlyingSymbol}_{moneyness}_{scripInfo.OptionType}";
+        }
+
+        // --- NEW: Method to calculate IV Rank and IV Percentile ---
+        private (decimal ivRank, decimal ivPercentile) CalculateIvRankAndPercentile(decimal currentIv, string key, IntradayIvState ivState)
+        {
+            // Calculate IV Percentile (Intraday)
+            decimal dayRange = ivState.DayHighIv - ivState.DayLowIv;
+            decimal ivPercentile = (dayRange > 0) ? (currentIv - ivState.DayLowIv) / dayRange * 100 : 0;
+
+            // Calculate IV Rank (Historical)
+            var (histHigh, histLow) = _historicalIvService.Get90DayIvRange(key);
+            decimal histRange = histHigh - histLow;
+            decimal ivRank = (histRange > 0) ? (currentIv - histLow) / histRange * 100 : 0;
+
+            return (Math.Round(ivRank, 2), Math.Round(ivPercentile, 2));
+        }
+
+        // --- NEW: Method to generate the advanced IV Trend signal ---
+        private string GetIvTrendSignal(decimal ivp, decimal ivr, IntradayIvState state)
+        {
+            state.IvPercentileHistory.Add(ivp);
+            if (state.IvPercentileHistory.Count > 10) state.IvPercentileHistory.RemoveAt(0);
+
+            if (state.IvPercentileHistory.Count < 5) return "Building...";
+
+            var recentIVP = state.IvPercentileHistory.Last();
+            var previousIVP = state.IvPercentileHistory[^5]; // Compare with 5 ticks ago
+
+            // IV Rising Signal
+            if (recentIVP > 30 && previousIVP < 20 && ivr < 70)
+            {
+                return "IV Rising";
+            }
+
+            // IV Crush Warning
+            if (ivr > 90 && recentIVP < state.IvPercentileHistory.Average())
+            {
+                return "IV Crush Warning";
+            }
+
+            // IV Low & Stable Signal
+            if (ivr < 10 && ivp < 20)
+            {
+                return "IV Low & Stable";
+            }
+
+            return "Neutral";
         }
 
         private async Task BackfillDataIfNeededAsync(DashboardInstrument instrument)
@@ -459,9 +569,9 @@ namespace TradingConsole.Wpf.Services
 
             result.Symbol = instrument.DisplayName;
             result.Vwap = dayVwap;
-            result.CurrentIv = instrument.ImpliedVolatility;
-            result.AvgIv = avgIv;
-            result.IvSignal = ivSignal;
+            // result.CurrentIv = instrument.ImpliedVolatility; // This line seems to cause a build error as CurrentIv is not a property of AnalysisResult
+            // result.AvgIv = avgIv; // This line seems to cause a build error as AvgIv is not a property of AnalysisResult
+            // result.IvSignal = ivSignal; // This line seems to cause a build error as IvSignal is not a property of AnalysisResult
             result.CurrentVolume = currentCandleVolume;
             result.AvgVolume = avgCandleVolume;
             result.VolumeSignal = volumeSignal;
