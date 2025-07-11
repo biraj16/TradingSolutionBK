@@ -170,28 +170,64 @@ namespace TradingConsole.Wpf.Services
         private string GetIvTrendSignal(decimal ivp, decimal ivr, IntradayIvState state)
         {
             state.IvPercentileHistory.Add(ivp);
-            if (state.IvPercentileHistory.Count > 10) state.IvPercentileHistory.RemoveAt(0);
-
-            if (state.IvPercentileHistory.Count < 5) return "Building...";
-
-            var recentIVP = state.IvPercentileHistory.Last();
-            var previousIVP = state.IvPercentileHistory[^5];
-
-            if (recentIVP > 30 && previousIVP < 20 && ivr < 70)
+            // Keep the history to a manageable size for recent trend analysis
+            if (state.IvPercentileHistory.Count > 10)
             {
-                return "IV Rising";
+                state.IvPercentileHistory.RemoveAt(0);
             }
 
-            if (ivr > 90 && recentIVP < state.IvPercentileHistory.Average())
+            // Need at least a few data points to identify a trend
+            if (state.IvPercentileHistory.Count < 5)
+            {
+                return "Building History...";
+            }
+
+            var recentIVP = state.IvPercentileHistory.Last();
+            var previousIVP = state.IvPercentileHistory[^2]; // The immediately preceding value
+            var fivePeriodAvgIVP = state.IvPercentileHistory.TakeLast(5).Average();
+            var tenPeriodAvgIVP = state.IvPercentileHistory.Average();
+
+            // --- NEW: IV Spike Detection ---
+            // A sharp, sudden increase in the intraday IV Percentile.
+            // This is a powerful signal for an option buyer.
+            if (recentIVP > previousIVP + 15 && recentIVP > 60)
+            {
+                return "IV Spike Up";
+            }
+
+            // --- NEW: IV Contraction Detection ---
+            // A sharp, sudden decrease in the intraday IV Percentile.
+            // This can signal a move is losing momentum.
+            if (recentIVP < previousIVP - 15 && recentIVP < 40)
+            {
+                return "IV Contraction";
+            }
+
+            // --- REFINED: IV Crush Warning ---
+            // If IV Rank is historically high, and the intraday IVP is consistently falling
+            // (below both its 5 and 10-period average), it's a strong warning.
+            if (ivr > 85 && recentIVP < fivePeriodAvgIVP && recentIVP < tenPeriodAvgIVP)
             {
                 return "IV Crush Warning";
             }
 
-            if (ivr < 10 && ivp < 20)
+            // --- REFINED: IV Rising Signal ---
+            // If IV is rising from a low base (IVR < 60) and is showing consistent upward momentum
+            // (above its moving averages), it's a bullish sign for volatility.
+            if (ivr < 60 && recentIVP > fivePeriodAvgIVP && previousIVP < tenPeriodAvgIVP)
+            {
+                return "IV Rising (Momentum)";
+            }
+
+            // --- REFINED: IV Low & Stable Signal ---
+            // If both historical rank and intraday percentile are very low, options are cheap
+            // but may not move much.
+            if (ivr < 20 && ivp < 20)
             {
                 return "IV Low & Stable";
             }
 
+            // Default neutral state if no other conditions are met.
             return "Neutral";
         }
 
