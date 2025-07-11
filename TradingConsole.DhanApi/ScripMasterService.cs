@@ -74,6 +74,17 @@ namespace TradingConsole.DhanApi
         {
             return _scripMaster.FirstOrDefault(s => s.SecurityId == securityId);
         }
+        public ScripInfo? FindBySecurityIdAndType(string securityId, string instrumentType)
+        {
+            // Basic validation to ensure the inputs are usable.
+            if (string.IsNullOrEmpty(securityId) || string.IsNullOrEmpty(instrumentType))
+            {
+                return null;
+            }
+
+            // Use LINQ's FirstOrDefault to find the first scrip that matches BOTH the securityId and the instrumentType.
+            return _scripMaster.FirstOrDefault(s => s.SecurityId == securityId && s.InstrumentType == instrumentType);
+        }
 
         public ScripInfo? FindEquityScripInfo(string tradingSymbol)
         {

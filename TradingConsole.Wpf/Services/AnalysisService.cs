@@ -202,10 +202,17 @@ namespace TradingConsole.Wpf.Services
 
             try
             {
-                var scripInfo = _scripMasterService.FindBySecurityId(instrument.SecurityId);
+                // --- THIS IS THE FIX ---
+                // We are now using the new, more specific method to find the scrip.
+                // By passing in both the Security ID and the Instrument Type, we guarantee
+                // that we get the correct instrument (e.g., the BankNifty INDEX) and not
+                // an unrelated equity stock that happens to share the same ID.
+                var scripInfo = _scripMasterService.FindBySecurityIdAndType(instrument.SecurityId, instrument.InstrumentType);
+                // --- END OF FIX ---
+
                 if (scripInfo == null)
                 {
-                    Debug.WriteLine($"[DEBUG_BACKFILL] FAILED: Could not find scrip info for {instrument.SecurityId}.");
+                    Debug.WriteLine($"[DEBUG_BACKFILL] FAILED: Could not find scrip info for {instrument.SecurityId} with type {instrument.InstrumentType}.");
                     return;
                 }
 
@@ -260,6 +267,7 @@ namespace TradingConsole.Wpf.Services
                 Debug.WriteLine($"[DEBUG_BACKFILL] UNEXPECTED ERROR during backfill for {instrument.DisplayName}: {ex.Message}");
             }
         }
+
 
 
         private List<Candle> AggregateHistoricalCandles(List<Candle> minuteCandles, TimeSpan timeframe)
